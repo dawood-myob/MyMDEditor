@@ -60,14 +60,14 @@ namespace MyMDEditor
         private System.Windows.Forms.ToolStripButton toolStripButtonHorizontalRule;
         private System.Windows.Forms.ToolStripButton toolStripButtonTable;
 
-        // Theme palette (dark, VS Code-inspired).
-        private static readonly System.Drawing.Color ThemeBackground = System.Drawing.Color.FromArgb(30, 30, 30);
-        private static readonly System.Drawing.Color ThemeSurface = System.Drawing.Color.FromArgb(37, 37, 38);
-        private static readonly System.Drawing.Color ThemeSurfaceAlt = System.Drawing.Color.FromArgb(45, 45, 48);
+        // Theme palette (grey, VS Code-inspired).
+        private static readonly System.Drawing.Color ThemeBackground = System.Drawing.Color.FromArgb(60, 60, 60);
+        private static readonly System.Drawing.Color ThemeSurface = System.Drawing.Color.FromArgb(70, 70, 72);
+        private static readonly System.Drawing.Color ThemeSurfaceAlt = System.Drawing.Color.FromArgb(80, 80, 83);
         private static readonly System.Drawing.Color ThemeAccent = System.Drawing.Color.FromArgb(0, 122, 204);
-        private static readonly System.Drawing.Color ThemeText = System.Drawing.Color.FromArgb(220, 220, 220);
-        private static readonly System.Drawing.Color ThemeEditorBackground = System.Drawing.Color.FromArgb(30, 30, 30);
-        private static readonly System.Drawing.Color ThemeEditorText = System.Drawing.Color.FromArgb(212, 212, 212);
+        private static readonly System.Drawing.Color ThemeText = System.Drawing.Color.FromArgb(230, 230, 230);
+        private static readonly System.Drawing.Color ThemeEditorBackground = System.Drawing.Color.FromArgb(64, 64, 64);
+        private static readonly System.Drawing.Color ThemeEditorText = System.Drawing.Color.FromArgb(225, 225, 225);
 
         private void InitializeComponent()
         {
