@@ -15,16 +15,22 @@ namespace MyMDEditor
 
         private const int DebounceDelayMilliseconds = 400;
         private const string AppTitle = "MyMDEditor - Markdown Editor with Live Preview";
+        private readonly string? _initialFilePath;
         private bool _isDirty;
         private bool _webViewReady;
         private CancellationTokenSource? _renderCts;
 
-        public MarkdownEditorForm() : this(new MarkdownRenderingService(), new FileManagementService())
+        public MarkdownEditorForm() : this(null, new MarkdownRenderingService(), new FileManagementService())
         {
         }
 
-        public MarkdownEditorForm(IMarkdownRenderingService renderingService, IFileManagementService fileService)
+        public MarkdownEditorForm(string? filePathToOpen) : this(filePathToOpen, new MarkdownRenderingService(), new FileManagementService())
         {
+        }
+
+        public MarkdownEditorForm(string? filePathToOpen, IMarkdownRenderingService renderingService, IFileManagementService fileService)
+        {
+            _initialFilePath = filePathToOpen;
             _renderingService = renderingService ?? throw new ArgumentNullException(nameof(renderingService));
             _fileService = fileService ?? throw new ArgumentNullException(nameof(fileService));
             _debouncer = new Debouncer(DebounceDelayMilliseconds);
@@ -38,6 +44,12 @@ namespace MyMDEditor
             {
                 await webView2Preview.EnsureCoreWebView2Async();
                 _webViewReady = true;
+
+                if (!string.IsNullOrEmpty(_initialFilePath))
+                {
+                    await LoadFileAsync(_initialFilePath);
+                }
+
                 await RenderPreviewAsync();
             }
             catch (Exception ex)
@@ -124,14 +136,19 @@ namespace MyMDEditor
                 return;
             }
 
+            await LoadFileAsync(openFileDialog1.FileName);
+        }
+
+        private async Task LoadFileAsync(string filePath)
+        {
             try
             {
                 UpdateStatus("Opening file...");
-                var content = await _fileService.OpenFileAsync(openFileDialog1.FileName);
+                var content = await _fileService.OpenFileAsync(filePath);
                 richTextBoxEditor.Text = NormalizeLineEndings(content);
                 richTextBoxEditor.ClearUndo();
                 _isDirty = false;
-                Text = $"{AppTitle} - [{Path.GetFileName(openFileDialog1.FileName)}]";
+                Text = $"{AppTitle} - [{Path.GetFileName(filePath)}]";
                 UpdateStatus("File opened.");
                 await RenderPreviewAsync();
             }

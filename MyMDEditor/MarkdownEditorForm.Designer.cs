@@ -534,6 +534,7 @@ namespace MyMDEditor
             this.MainMenuStrip = this.menuStrip1;
             this.MinimumSize = new System.Drawing.Size(800, 500);
             this.Name = "MarkdownEditorForm";
+            this.Icon = new System.Drawing.Icon(System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream("MyMDEditor.Resources.AppIcon.ico")!);
             this.Text = "MyMDEditor - Markdown Editor with Live Preview  |  by Dawood Ali";
             this.Load += new System.EventHandler(this.MarkdownEditorForm_Load);
             this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.MarkdownEditorForm_FormClosing);
