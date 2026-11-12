@@ -1,0 +1,86 @@
+MyMDEditor.Tests/DocxExporterTests.cs
+  h_99bf5bda907ab1 1-292
+MyMDEditor.Tests/EditingTests.cs
+  h_99bf5bda907ab1 1-207
+MyMDEditor.Tests/MSTestSettings.cs
+  h_99bf5bda907ab1 1
+MyMDEditor.Tests/MarkdownRenderingServiceTests.cs
+  h_99bf5bda907ab1 1-151
+MyMDEditor.Tests/MyMDEditor.Tests.csproj
+  h_99bf5bda907ab1 1-23
+MyMDEditor.Tests/NavigationTests.cs
+  h_99bf5bda907ab1 1-248
+MyMDEditor.Tests/PersistenceTests.cs
+  h_99bf5bda907ab1 1-236
+MyMDEditor.Tests/SearchTests.cs
+  h_99bf5bda907ab1 1-254
+MyMDEditor/Infrastructure/AppLogger.cs
+  h_99bf5bda907ab1 1-97
+MyMDEditor/MarkdownEditorForm.cs
+  h_99bf5bda907ab1 1-5,7-10,15-16,18,20-174,176-177,179,181-190,193,195-200,203,205-210,212-224,227-257,261-284,286,288,291-293,297,301,303,308,310-328,330-339,342,344-363,366-368,370-380,383,385,390-395,397-398,401-402,404,407-412,414,416-417,419-424,426,428-429,432,434-435,437,440,443,447-454,456,458-460,464,466-478,481,483-486,489,491-496,498,500-501,503-518,520-527,532-534,536,538-539,543-549,551-561,563-569,571-575,577-586,588,590-595,597,599-600,602-614,618,620,622-653,657,659,661-700,704-712,714-736,738-740,742-743,746,748-753,756,758-764,767,769-773,775-776,778-783,786-795,797-801,803-807,809-814,816-840,842-845,847-851,853-859,861-862,864-870,872,874-878,880-888,890-902,904-916,918-924,926-929,931-937,939,941-955,957,959-962,965,967-979,981-987,989-995,997-1000,1002-1003,1005-1029,1031-1035,1038,1041,1043-1046,1048-1052,1054,1056-1089,1091-1099,1102-1103,1106,1108-1114,1117,1119-1129,1132,1134-1148,1151-1153,1155-1217,1222-1263,1266,1268-1281,1284,1286-1299,1302,1304-1316,1319,1321-1331
+MyMDEditor/MyMDEditor.csproj
+  h_99bf5bda907ab1 19-23
+MyMDEditor/Resources/Preview/preview.css
+  h_99bf5bda907ab1 1-106
+MyMDEditor/Resources/Preview/preview.html
+  h_99bf5bda907ab1 1-18
+MyMDEditor/Resources/Preview/preview.js
+  h_99bf5bda907ab1 1-365
+MyMDEditor/Services/Editing/LineOperations.cs
+  h_99bf5bda907ab1 1-161
+MyMDEditor/Services/Editing/SourceLocator.cs
+  h_99bf5bda907ab1 1-87
+MyMDEditor/Services/Editing/TableEditor.cs
+  h_99bf5bda907ab1 1-303
+MyMDEditor/Services/Export/DocxExporter.cs
+  h_99bf5bda907ab1 1-10,12-16,18-111,113,115-129,131-133,135-151,154-155,157-180,183-193,195-789
+MyMDEditor/Services/FileManagementService.cs
+  h_99bf5bda907ab1 6-7,13-14,22-26,28,38-51,54-149
+MyMDEditor/Services/FuzzyMatcher.cs
+  h_99bf5bda907ab1 1-88
+MyMDEditor/Services/IFileManagementService.cs
+  h_99bf5bda907ab1 1-2,5-21,26-29,32,34-36
+MyMDEditor/Services/IMarkdownRenderingService.cs
+  h_99bf5bda907ab1 4,8-16
+MyMDEditor/Services/LineIndex.cs
+  h_99bf5bda907ab1 1-77
+MyMDEditor/Services/MarkdownPipelines.cs
+  h_99bf5bda907ab1 1-14
+MyMDEditor/Services/MarkdownRenderingService.cs
+  h_99bf5bda907ab1 1,3-6,11-13,17,19,24,28,30-49,51-54,56-109,111-113,117
+MyMDEditor/Services/OutlineService.cs
+  h_99bf5bda907ab1 1-120
+MyMDEditor/Services/PreviewAssets.cs
+  h_99bf5bda907ab1 1-65
+MyMDEditor/Services/RecoveryService.cs
+  h_99bf5bda907ab1 1-112
+MyMDEditor/Services/RenderResult.cs
+  h_99bf5bda907ab1 1-5
+MyMDEditor/Services/Search/SearchEngine.cs
+  h_99bf5bda907ab1 1-201
+MyMDEditor/Services/Search/SearchOptions.cs
+  h_99bf5bda907ab1 1-39
+MyMDEditor/Services/Search/SearchSession.cs
+  h_99bf5bda907ab1 1-126
+MyMDEditor/Services/SettingsService.cs
+  h_99bf5bda907ab1 1-133
+MyMDEditor/Services/TextStatistics.cs
+  h_99bf5bda907ab1 1-41
+MyMDEditor/UI/FindBar.cs
+  h_99bf5bda907ab1 1-229
+MyMDEditor/UI/QuickJumpDialog.cs
+  h_99bf5bda907ab1 1-192
+MyMDEditor/UI/Theme.cs
+  h_99bf5bda907ab1 1-237
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2d36f7d40f2ccc5e5662ee9b37bddad9d9b14409",
+  "prompts": {},
+  "humans": {
+    "h_99bf5bda907ab1": {
+      "author": "Dawood Ali <dawood.ali@example.com>"
+    }
+  }
+}
