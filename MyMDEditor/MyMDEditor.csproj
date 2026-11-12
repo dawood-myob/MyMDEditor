@@ -16,6 +16,11 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Resources\AppIcon.ico" />
+    <EmbeddedResource Include="Resources\Preview\*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="MyMDEditor.Tests" />
   </ItemGroup>
 
 </Project>

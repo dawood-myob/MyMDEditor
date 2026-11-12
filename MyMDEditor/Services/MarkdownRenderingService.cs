@@ -1,110 +1,117 @@
+using System.Text;
 using Markdig;
+using Markdig.Renderers;
+using Markdig.Renderers.Html;
+using Markdig.Syntax;
+using Markdig.Syntax.Inlines;
 
 namespace MyMDEditor.Services
 {
     /// <summary>
-    /// Renders Markdown to HTML using Markdig with GitHub-flavored extensions,
-    /// wrapping the result with GitHub-style CSS for a familiar look.
+    /// Renders Markdown to HTML using Markdig with GitHub-flavored extensions.
+    /// A single parse produces the HTML, the heading outline and (optionally) source-position
+    /// attributes on every block so the preview can be mapped back to the Markdown source.
     /// </summary>
     public sealed class MarkdownRenderingService : IMarkdownRenderingService
     {
-        private readonly MarkdownPipeline _pipeline;
+        private readonly MarkdownPipeline _pipeline = MarkdownPipelines.Create();
 
-        public MarkdownRenderingService()
-        {
-            _pipeline = new MarkdownPipelineBuilder()
-                .UseAdvancedExtensions()
-                .UseEmojiAndSmiley()
-                .Build();
-        }
-
-        public Task<string> RenderToHtmlAsync(string markdown, CancellationToken cancellationToken = default)
+        public Task<RenderResult> RenderAsync(string markdown, bool includeSourceMap = true, CancellationToken cancellationToken = default)
         {
             return Task.Run(() =>
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var body = Markdown.ToHtml(markdown ?? string.Empty, _pipeline);
-                return WrapWithGitHubStyle(body);
+                return Render(markdown ?? string.Empty, includeSourceMap, cancellationToken);
             }, cancellationToken);
         }
 
-        private static string WrapWithGitHubStyle(string bodyHtml)
+        public async Task<string> RenderToHtmlAsync(string markdown, string? title = null, CancellationToken cancellationToken = default)
         {
-            return $$"""
-            <!DOCTYPE html>
-            <html>
-            <head>
-            <meta charset="utf-8" />
-            <style>
-                body {
-                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-                    font-size: 16px;
-                    line-height: 1.6;
-                    color: #24292f;
-                    background-color: #ffffff;
-                    padding: 16px 24px;
-                    word-wrap: break-word;
+            var result = await RenderAsync(markdown, includeSourceMap: false, cancellationToken).ConfigureAwait(false);
+            var documentTitle = !string.IsNullOrWhiteSpace(title)
+                ? title!
+                : result.Outline.FirstOrDefault()?.Title ?? "Document";
+            return PreviewAssets.BuildStandaloneDocument(documentTitle, result.BodyHtml);
+        }
+
+        public RenderResult Render(string markdown, bool includeSourceMap, CancellationToken cancellationToken = default)
+        {
+            var document = Markdown.Parse(markdown, _pipeline);
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var lineIndex = includeSourceMap ? new LineIndex(markdown) : null;
+            var outline = new List<OutlineEntry>();
+
+            foreach (var block in document.Descendants<Block>())
+            {
+                if (block is HeadingBlock heading)
+                {
+                    outline.Add(new OutlineEntry(heading.Level, GetPlainText(heading.Inline), heading.Line, heading.Span.Start));
                 }
-                h1, h2, h3, h4, h5, h6 {
-                    font-weight: 600;
-                    margin-top: 24px;
-                    margin-bottom: 16px;
-                    border-bottom: 1px solid #d0d7de;
-                    padding-bottom: 0.3em;
+
+                if (lineIndex is not null && block is not (LinkReferenceDefinitionGroup or LinkReferenceDefinition))
+                {
+                    AddSourceAttributes(block, lineIndex);
                 }
-                h1 { font-size: 2em; }
-                h2 { font-size: 1.5em; }
-                h3, h4, h5, h6 { border-bottom: none; }
-                a { color: #0969da; text-decoration: none; }
-                a:hover { text-decoration: underline; }
-                code {
-                    background-color: rgba(175,184,193,0.2);
-                    padding: 0.2em 0.4em;
-                    border-radius: 6px;
-                    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-                    font-size: 85%;
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+
+            using var writer = new StringWriter();
+            var renderer = new HtmlRenderer(writer);
+            _pipeline.Setup(renderer);
+            renderer.Render(document);
+            writer.Flush();
+
+            return new RenderResult(writer.ToString(), outline);
+        }
+
+        private static void AddSourceAttributes(Block block, LineIndex lineIndex)
+        {
+            if (block.Span.IsEmpty)
+            {
+                return;
+            }
+
+            var startOffset = block.Span.Start;
+            var endOffset = Math.Min(block.Span.End + 1, lineIndex.Length);
+            var startLine = lineIndex.GetLineFromOffset(startOffset);
+            var endLine = lineIndex.GetLineFromOffset(Math.Max(startOffset, endOffset - 1));
+
+            var attributes = block.GetAttributes();
+            attributes.AddProperty("data-sl", startLine.ToString());
+            attributes.AddProperty("data-el", endLine.ToString());
+            attributes.AddProperty("data-ss", startOffset.ToString());
+            attributes.AddProperty("data-se", endOffset.ToString());
+        }
+
+        /// <summary>Flattens heading inlines to plain text, dropping emphasis/link markup.</summary>
+        internal static string GetPlainText(ContainerInline? container)
+        {
+            if (container is null)
+            {
+                return string.Empty;
+            }
+
+            var builder = new StringBuilder();
+            foreach (var inline in container.Descendants())
+            {
+                switch (inline)
+                {
+                    case LiteralInline literal:
+                        builder.Append(literal.Content.ToString());
+                        break;
+                    case CodeInline code:
+                        builder.Append(code.Content);
+                        break;
+                    case LineBreakInline:
+                        builder.Append(' ');
+                        break;
                 }
-                pre {
-                    background-color: #f6f8fa;
-                    border-radius: 6px;
-                    padding: 16px;
-                    overflow: auto;
-                }
-                pre code {
-                    background-color: transparent;
-                    padding: 0;
-                }
-                blockquote {
-                    border-left: 0.25em solid #d0d7de;
-                    color: #57606a;
-                    padding: 0 1em;
-                    margin: 0;
-                }
-                table {
-                    border-collapse: collapse;
-                    width: 100%;
-                    margin: 16px 0;
-                }
-                table th, table td {
-                    border: 1px solid #d0d7de;
-                    padding: 6px 13px;
-                }
-                table tr:nth-child(2n) {
-                    background-color: #f6f8fa;
-                }
-                img { max-width: 100%; }
-                hr {
-                    border: none;
-                    border-top: 1px solid #d0d7de;
-                    margin: 24px 0;
-                }
-            </style>
-            </head>
-            <body>
-            {{bodyHtml}}
-            </body>
-            </html>
-            """;
+            }
+
+            return builder.ToString().Trim();
         }
     }
 }
+

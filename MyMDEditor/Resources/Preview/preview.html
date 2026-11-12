@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="{{THEME}}">
+<head>
+<meta charset="utf-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src * data: blob:; media-src *; font-src * data:; style-src 'unsafe-inline'; script-src 'nonce-{{NONCE}}'" />
+<title>Preview</title>
+<base id="docBase" href="about:blank" />
+<style>
+{{CSS}}
+</style>
+</head>
+<body>
+<article id="content" class="markdown-body" role="document" aria-label="Markdown preview" tabindex="0"></article>
+<script nonce="{{NONCE}}">
+{{JS}}
+</script>
+</body>
+</html>
