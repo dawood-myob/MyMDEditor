@@ -126,9 +126,15 @@ namespace MyMDEditor
             view.DropDownItems.Add(_wordWrapToggle);
             view.DropDownItems.Add(new ToolStripSeparator());
             var theme = new ToolStripMenuItem("&Theme");
-            theme.DropDownItems.Add("&Dark", null, (_, _) => SetTheme("dark"));
-            theme.DropDownItems.Add("&Light", null, (_, _) => SetTheme("light"));
-            theme.DropDownItems.Add("&System", null, (_, _) => SetTheme("system"));
+            _themeDarkMenuItem = new ToolStripMenuItem("&Dark") { CheckOnClick = false };
+            _themeDarkMenuItem.Click += (_, _) => SetTheme("dark");
+            _themeLightMenuItem = new ToolStripMenuItem("&Light") { CheckOnClick = false };
+            _themeLightMenuItem.Click += (_, _) => SetTheme("light");
+            _themeSystemMenuItem = new ToolStripMenuItem("&System") { CheckOnClick = false };
+            _themeSystemMenuItem.Click += (_, _) => SetTheme("system");
+            theme.DropDownItems.Add(_themeDarkMenuItem);
+            theme.DropDownItems.Add(_themeLightMenuItem);
+            theme.DropDownItems.Add(_themeSystemMenuItem);
             view.DropDownItems.Add(theme);
             view.DropDownItems.Add(new ToolStripSeparator());
             view.DropDownItems.Add("Zoom &In", null, (_, _) => Zoom(10));
@@ -152,6 +158,10 @@ namespace MyMDEditor
         private ToolStripMenuItem _recentMenu = null!;
         private ToolStripMenuItem _outlineToggle = null!;
         private ToolStripMenuItem _wordWrapToggle = null!;
+        private ToolStripButton _themeToggleButton = null!;
+        private ToolStripMenuItem _themeDarkMenuItem = null!;
+        private ToolStripMenuItem _themeLightMenuItem = null!;
+        private ToolStripMenuItem _themeSystemMenuItem = null!;
 
         private void BuildToolbar()
         {
@@ -164,14 +174,19 @@ namespace MyMDEditor
             _toolbar.Items.Add(new ToolStripButton("Link") { ToolTipText = "Insert link (Ctrl+K)", DisplayStyle = ToolStripItemDisplayStyle.Text });
             _toolbar.Items.Add(new ToolStripSeparator());
             _toolbar.Items.Add(new ToolStripButton("Find") { ToolTipText = "Find (Ctrl+F)", DisplayStyle = ToolStripItemDisplayStyle.Text });
+            _toolbar.Items.Add(new ToolStripSeparator());
+            _themeToggleButton = new ToolStripButton(string.Empty) { ToolTipText = "Toggle dark/light theme", DisplayStyle = ToolStripItemDisplayStyle.Text };
+            _toolbar.Items.Add(_themeToggleButton);
 
             foreach (ToolStripItem item in _toolbar.Items)
             {
-                if (item is ToolStripButton button)
+                if (item is ToolStripButton button && button != _themeToggleButton)
                 {
                     button.Click += (_, _) => OnToolbarClick(button.Text!);
                 }
             }
+
+            _themeToggleButton.Click += (_, _) => SetTheme(_palette.IsDark ? "light" : "dark");
 
             Controls.Add(_toolbar);
         }
@@ -837,6 +852,13 @@ namespace MyMDEditor
             {
                 PostToPreview(new { type = "theme", theme = _palette.PreviewTheme });
             }
+
+            _themeToggleButton.Text = _palette.IsDark ? "? Light" : "?? Dark";
+            _themeToggleButton.ToolTipText = _palette.IsDark ? "Switch to light theme" : "Switch to dark theme";
+
+            _themeDarkMenuItem.Checked = _settings.Theme == "dark";
+            _themeLightMenuItem.Checked = _settings.Theme == "light";
+            _themeSystemMenuItem.Checked = _settings.Theme == "system";
         }
 
         private void UpdateModifiedStatus()
