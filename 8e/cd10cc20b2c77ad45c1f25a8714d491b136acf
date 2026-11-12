@@ -1,0 +1,14 @@
+MyMDEditor/MarkdownEditorForm.cs
+  h_99bf5bda907ab1 129-137,161-164,177-179,183,189-190,855-861
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8ecd10cc20b2c77ad45c1f25a8714d491b136acf",
+  "prompts": {},
+  "humans": {
+    "h_99bf5bda907ab1": {
+      "author": "Dawood Ali <dawood.ali@example.com>"
+    }
+  }
+}
