@@ -1,0 +1,37 @@
+MyMDEditor.Tests/PersistenceTests.cs
+  s_254d1a929acb78::t_d93b3a658e3340 235-276
+MyMDEditor/DocumentTab.cs
+  s_254d1a929acb78::t_f0c3066cf2f725 1-39
+MyMDEditor/MarkdownEditorForm.Documents.cs
+  s_254d1a929acb78::t_94def133bcce28 1-286
+MyMDEditor/MarkdownEditorForm.Ribbon.cs
+  s_254d1a929acb78::t_31e78f2626ae30 1-183
+MyMDEditor/MarkdownEditorForm.cs
+  s_254d1a929acb78::t_bb8950dce8dcf8 18,28-29,36-37,39,43-48,50-61,72,81-83,90,117,119-120,122,128-132,138,140-142,144-168,177-199,220-251,256-258,261,264,266,268-271,273-284,287-288,305-340,348-368,370-371,375,378,380,384-388,390-391,393-397,416-423,431-435,437-438,440-444,447-455,460,462-464,467-470,474-475,479-482,484-485,488-500,503,505,509,513,515-516,519,522,525,527-532,538,541,545-546,549-555,568,570,576,579,595,597,599-600,673-675,678-680,686-690,700,710-724,761-768,816-829,929-934,941-977,992-993,996-1004,1006-1008,1011,1016,1022,1027,1033,1038-1044,1050-1051,1255,1257-1259,1265-1269,1375-1380,1530-1535
+MyMDEditor/Services/RecoveryService.cs
+  s_254d1a929acb78::t_6b7382eb92d761 25-26,28-29,35-36,38,46-47,51,53-70,80-83,87,90,102,110,112,115
+MyMDEditor/Services/SettingsService.cs
+  s_254d1a929acb78::t_727e9ede5b25a6 39-41,75
+MyMDEditor/UI/DocumentTabStrip.cs
+  s_254d1a929acb78::t_955f1000c5edb1 1-416
+MyMDEditor/UI/Ribbon.cs
+  s_254d1a929acb78::t_9d8ef13de42117 1-588
+MyMDEditor/UI/Theme.cs
+  s_254d1a929acb78::t_cf1f896860cb9a 104-125
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "970e0d29ff5e6be84ff1b664252c888ff3496193",
+  "prompts": {},
+  "sessions": {
+    "s_254d1a929acb78": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "s_254d1a929acb78",
+        "model": "unknown"
+      },
+      "human_author": "Dawood Ali <dawood.ali@example.com>"
+    }
+  }
+}
