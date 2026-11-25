@@ -1,0 +1,29 @@
+MyMDEditor/MarkdownEditorForm.Ribbon.cs
+  s_cfcc974dec3dcd::t_7fd767d41d6d19 1,19-22,118-149,153-182,190-195
+MyMDEditor/MarkdownEditorForm.cs
+  s_cfcc974dec3dcd::t_b4aa97ba5a6c3e 86,831-834,1277-1279
+MyMDEditor/UI/HelpDialog.cs
+  s_cfcc974dec3dcd::t_ea3a7437dc7b66 1-337
+MyMDEditor/MarkdownEditorForm.Documents.cs
+  s_cfcc974dec3dcd::t_af7d947adcdadd 56-79
+MyMDEditor/UI/PaneSwitcher.cs
+  s_cfcc974dec3dcd::t_efb6768a7d1b42 1-257
+MyMDEditor/UI/Ribbon.cs
+  s_cfcc974dec3dcd::t_01c347b0e485f1 386,422-445,452-453,460
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "73077b9b2f31c44b04d93a5b55a8b3eb979bc4c7",
+  "prompts": {},
+  "sessions": {
+    "s_cfcc974dec3dcd": {
+      "agent_id": {
+        "tool": "github-copilot-cli",
+        "id": "b6993094-c8dc-4e7c-92d6-d1842c25c880",
+        "model": "unknown"
+      },
+      "human_author": "Dawood Ali <dawood.ali@example.com>"
+    }
+  }
+}
