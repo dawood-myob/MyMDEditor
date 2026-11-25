@@ -36,6 +36,9 @@ namespace MyMDEditor.Services
         public bool RestoreSession { get; set; } = true;
         public string? LastFile { get; set; }
         public int LastCaret { get; set; }
+
+        /// <summary>Saved files that were open in tabs when the app last closed, in tab order.</summary>
+        public List<string> OpenFiles { get; set; } = new();
         public WindowPlacement? Window { get; set; }
         public List<string> RecentFiles { get; set; } = new();
 
@@ -69,6 +72,7 @@ namespace MyMDEditor.Services
             RecentFiles ??= new List<string>();
             RecentFiles = RecentFiles.Where(p => !string.IsNullOrWhiteSpace(p)).Take(MaxRecentFiles).ToList();
             LastCaret = Math.Max(0, LastCaret);
+            OpenFiles = (OpenFiles ?? new List<string>()).Where(p => !string.IsNullOrWhiteSpace(p)).Distinct(StringComparer.OrdinalIgnoreCase).Take(50).ToList();
         }
     }
 

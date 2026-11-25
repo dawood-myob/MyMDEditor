@@ -101,6 +101,28 @@ namespace MyMDEditor.UI
         [DllImport("dwmapi.dll")]
         private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
 
+        [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)]
+        private static extern int SetWindowTheme(IntPtr hwnd, string? subAppName, string? subIdList);
+
+        /// <summary>Gives native scrollbars of a control the dark or light Explorer look matching the palette.</summary>
+        public static void ApplyScrollbars(Control control, ThemePalette palette)
+        {
+            if (!control.IsHandleCreated)
+            {
+                control.HandleCreated += (_, _) => ApplyScrollbars(control, palette);
+                return;
+            }
+
+            try
+            {
+                _ = SetWindowTheme(control.Handle, palette.IsDark ? "DarkMode_Explorer" : "Explorer", null);
+            }
+            catch (Exception)
+            {
+                // Visual styles unavailable; keep default scrollbars.
+            }
+        }
+
         public static void ApplyTitleBar(Form form, ThemePalette palette)
         {
             if (!form.IsHandleCreated)

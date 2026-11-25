@@ -22,17 +22,20 @@ namespace MyMDEditor.Services
             _processId = processId ?? Environment.ProcessId;
         }
 
-        private string SnapshotPath => Path.Combine(_directory, $"recovery-{_processId}.json");
+        private string SnapshotPathFor(string? documentKey) => Path.Combine(_directory,
+            string.IsNullOrEmpty(documentKey) ? $"recovery-{_processId}.json" : $"recovery-{_processId}-{documentKey}.json");
 
-        public void Save(string? originalPath, string text)
+        /// <summary>Writes the snapshot for one document; <paramref name="documentKey"/> distinguishes open tabs.</summary>
+        public void Save(string? originalPath, string text, string? documentKey = null)
         {
             try
             {
                 Directory.CreateDirectory(_directory);
                 var snapshot = new RecoverySnapshot(originalPath, text, DateTime.UtcNow, _processId);
-                var temp = SnapshotPath + ".tmp";
+                var path = SnapshotPathFor(documentKey);
+                var temp = path + ".tmp";
                 File.WriteAllText(temp, JsonSerializer.Serialize(snapshot));
-                File.Move(temp, SnapshotPath, overwrite: true);
+                File.Move(temp, path, overwrite: true);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
@@ -40,13 +43,31 @@ namespace MyMDEditor.Services
             }
         }
 
-        public void Clear()
+        /// <summary>Removes the snapshot for one document, or every snapshot owned by this process when no key is given.</summary>
+        public void Clear(string? documentKey = null)
         {
             try
             {
-                if (File.Exists(SnapshotPath))
+                if (documentKey is not null)
                 {
-                    File.Delete(SnapshotPath);
+                    var single = SnapshotPathFor(documentKey);
+                    if (File.Exists(single))
+                    {
+                        File.Delete(single);
+                    }
+
+                    return;
+                }
+
+                if (!Directory.Exists(_directory))
+                {
+                    return;
+                }
+
+                foreach (var file in Directory.EnumerateFiles(_directory, $"recovery-{_processId}.json")
+                             .Concat(Directory.EnumerateFiles(_directory, $"recovery-{_processId}-*.json")))
+                {
+                    File.Delete(file);
                 }
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -56,15 +77,17 @@ namespace MyMDEditor.Services
         }
 
         /// <summary>Returns the newest snapshot that belongs to a process that is no longer running.</summary>
-        public RecoverySnapshot? FindOrphan()
+        public RecoverySnapshot? FindOrphan() => FindOrphans().FirstOrDefault();
+
+        /// <summary>Returns (and removes) every snapshot left behind by dead processes, newest first.</summary>
+        public IReadOnlyList<RecoverySnapshot> FindOrphans()
         {
             if (!Directory.Exists(_directory))
             {
-                return null;
+                return Array.Empty<RecoverySnapshot>();
             }
 
-            RecoverySnapshot? newest = null;
-            string? newestPath = null;
+            var found = new List<(RecoverySnapshot Snapshot, string Path)>();
 
             foreach (var file in Directory.EnumerateFiles(_directory, "recovery-*.json"))
             {
@@ -76,11 +99,7 @@ namespace MyMDEditor.Services
                         continue;
                     }
 
-                    if (newest is null || snapshot.SavedUtc > newest.SavedUtc)
-                    {
-                        newest = snapshot;
-                        newestPath = file;
-                    }
+                    found.Add((snapshot, file));
                 }
                 catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
                 {
@@ -88,12 +107,12 @@ namespace MyMDEditor.Services
                 }
             }
 
-            if (newestPath is not null)
+            foreach (var (_, path) in found)
             {
-                try { File.Delete(newestPath); } catch (IOException) { }
+                try { File.Delete(path); } catch (IOException) { }
             }
 
-            return newest;
+            return found.Select(f => f.Snapshot).OrderByDescending(s => s.SavedUtc).ToList();
         }
 
         private static bool IsRunning(int processId)

@@ -15,9 +15,8 @@ namespace MyMDEditor
     /// Main editor window: a Markdown source editor with a live, synchronised preview,
     /// full-text search, a document outline and professional editing conveniences.
     /// </summary>
-    public sealed class MarkdownEditorForm : Form
+    public sealed partial class MarkdownEditorForm : Form
     {
-        private readonly IFileManagementService _fileService = new FileManagementService();
         private readonly IMarkdownRenderingService _renderer = new MarkdownRenderingService();
         private readonly ISettingsService _settingsService = new SettingsService();
         private readonly RecoveryService _recovery = new();
@@ -26,27 +25,40 @@ namespace MyMDEditor
         private readonly System.Windows.Forms.Timer _caretTimer = new() { Interval = 120 };
         private readonly System.Windows.Forms.Timer _autoSaveTimer = new() { Interval = 30_000 };
 
-        private readonly MenuStrip _menu = new();
-        private readonly ToolStrip _toolbar = new();
+        private readonly RibbonBar _ribbon = new() { Dock = DockStyle.Top };
+        private readonly DocumentTabStrip _tabStrip = new() { Dock = DockStyle.Top };
         private readonly StatusStrip _statusStrip = new();
         private readonly ToolStripStatusLabel _statusPosition = new("Ln 1, Col 1");
         private readonly ToolStripStatusLabel _statusStats = new("0 words");
         private readonly ToolStripStatusLabel _statusEncoding = new("UTF-8");
         private readonly ToolStripStatusLabel _statusModified = new(string.Empty) { Spring = false };
 
-        private readonly SplitContainer _outerSplit = new() { Orientation = Orientation.Vertical, FixedPanel = FixedPanel.Panel1 };
-        private readonly SplitContainer _innerSplit = new() { Orientation = Orientation.Vertical };
+        private readonly SplitContainer _outerSplit = new() { Orientation = Orientation.Vertical, FixedPanel = FixedPanel.Panel1, SplitterWidth = 1 };
+        private readonly SplitContainer _innerSplit = new() { Orientation = Orientation.Vertical, SplitterWidth = 1 };
 
-        private readonly TreeView _outlineTree = new() { Dock = DockStyle.Fill, HideSelection = false, BorderStyle = BorderStyle.None };
-        private readonly RichTextBox _editor = new()
+        private readonly TreeView _outlineTree = new()
         {
             Dock = DockStyle.Fill,
-            Font = new Font("Consolas", 11F),
-            BorderStyle = BorderStyle.None,
-            AcceptsTab = true,
             HideSelection = false,
-            WordWrap = true,
+            BorderStyle = BorderStyle.None,
+            ShowLines = false,
+            FullRowSelect = true,
+            ItemHeight = 26,
+            Indent = 16,
+            Font = new Font("Segoe UI", 9.5F),
         };
+        private readonly Label _outlineHeader = new()
+        {
+            Dock = DockStyle.Top,
+            Height = 34,
+            Text = "OUTLINE",
+            Font = new Font("Segoe UI Semibold", 8.5F),
+            TextAlign = ContentAlignment.MiddleLeft,
+            Padding = new Padding(14, 0, 0, 0),
+        };
+        private readonly Panel _editorHost = new() { Dock = DockStyle.Fill, Padding = new Padding(24, 18, 12, 8) };
+        private readonly List<DocumentTab> _documents = new();
+        private DocumentTab _active = null!;
         private readonly FindBar _findBar = new() { Dock = DockStyle.Top, Visible = false };
         private readonly WebView2 _preview = new() { Dock = DockStyle.Fill };
 
@@ -57,6 +69,7 @@ namespace MyMDEditor
         private SearchSession? _search;
         private bool _previewReady;
         private bool _suppressTextEvents;
+        private bool _resyncPreviewAfterRender;
         private bool _closing;
         private int _lastCaretLine = -1;
         private CancellationTokenSource _renderCts = new();
@@ -65,16 +78,16 @@ namespace MyMDEditor
         {
             AppLogger.Initialise();
             Text = "MyMDEditor";
-            Width = 1200;
-            Height = 800;
+            Width = 1280;
+            Height = 820;
+            MinimumSize = new Size(820, 520);
             StartPosition = FormStartPosition.CenterScreen;
             KeyPreview = true;
 
             _settings = _settingsService.Load();
             _palette = ThemePalette.Resolve(_settings.Theme);
 
-            BuildMenu();
-            BuildToolbar();
+            BuildRibbon();
             BuildStatusBar();
             BuildLayout();
             WireEvents();
@@ -86,124 +99,6 @@ namespace MyMDEditor
         }
 
         // ---------------------------------------------------------------- Layout
-
-        private void BuildMenu()
-        {
-            var file = new ToolStripMenuItem("&File");
-            file.DropDownItems.Add("&New", null, async (_, _) => await NewDocumentAsync());
-            file.DropDownItems.Add("&Open...", null, async (_, _) => await OpenDocumentAsync());
-            _recentMenu = new ToolStripMenuItem("Open &Recent");
-            file.DropDownItems.Add(_recentMenu);
-            file.DropDownItems.Add(new ToolStripSeparator());
-            file.DropDownItems.Add("&Save", null, async (_, _) => await SaveDocumentAsync());
-            file.DropDownItems.Add("Save &As...", null, async (_, _) => await SaveDocumentAsAsync());
-            file.DropDownItems.Add(new ToolStripSeparator());
-            var export = new ToolStripMenuItem("&Export");
-            export.DropDownItems.Add("As &HTML...", null, async (_, _) => await ExportHtmlAsync());
-            export.DropDownItems.Add("As &Word Document (.docx)...", null, async (_, _) => await ExportDocxAsync());
-            export.DropDownItems.Add("As &PDF...", null, async (_, _) => await ExportPdfAsync());
-            file.DropDownItems.Add(export);
-            file.DropDownItems.Add(new ToolStripSeparator());
-            file.DropDownItems.Add("E&xit", null, (_, _) => Close());
-
-            var edit = new ToolStripMenuItem("&Edit");
-            edit.DropDownItems.Add("&Undo", null, (_, _) => { if (_editor.CanUndo) _editor.Undo(); });
-            edit.DropDownItems.Add("&Redo", null, (_, _) => { if (_editor.CanRedo) _editor.Redo(); });
-            edit.DropDownItems.Add(new ToolStripSeparator());
-            edit.DropDownItems.Add("&Find...", null, (_, _) => ShowFind(withReplace: false));
-            edit.DropDownItems.Add("&Replace...", null, (_, _) => ShowFind(withReplace: true));
-            edit.DropDownItems.Add("Find &Next", null, (_, _) => FindNext());
-            edit.DropDownItems.Add("Find &Previous", null, (_, _) => FindPrevious());
-            edit.DropDownItems.Add(new ToolStripSeparator());
-            edit.DropDownItems.Add("Select &All", null, (_, _) => _editor.SelectAll());
-
-            var view = new ToolStripMenuItem("&View");
-            _outlineToggle = new ToolStripMenuItem("Document &Outline") { CheckOnClick = true, Checked = _settings.ShowOutline };
-            _outlineToggle.CheckedChanged += (_, _) => SetOutlineVisible(_outlineToggle.Checked);
-            view.DropDownItems.Add(_outlineToggle);
-            _wordWrapToggle = new ToolStripMenuItem("&Word Wrap") { CheckOnClick = true, Checked = _settings.WordWrap };
-            _wordWrapToggle.CheckedChanged += (_, _) => { _editor.WordWrap = _wordWrapToggle.Checked; _settings.WordWrap = _wordWrapToggle.Checked; };
-            view.DropDownItems.Add(_wordWrapToggle);
-            view.DropDownItems.Add(new ToolStripSeparator());
-            var theme = new ToolStripMenuItem("&Theme");
-            _themeDarkMenuItem = new ToolStripMenuItem("&Dark") { CheckOnClick = false };
-            _themeDarkMenuItem.Click += (_, _) => SetTheme("dark");
-            _themeLightMenuItem = new ToolStripMenuItem("&Light") { CheckOnClick = false };
-            _themeLightMenuItem.Click += (_, _) => SetTheme("light");
-            _themeSystemMenuItem = new ToolStripMenuItem("&System") { CheckOnClick = false };
-            _themeSystemMenuItem.Click += (_, _) => SetTheme("system");
-            theme.DropDownItems.Add(_themeDarkMenuItem);
-            theme.DropDownItems.Add(_themeLightMenuItem);
-            theme.DropDownItems.Add(_themeSystemMenuItem);
-            view.DropDownItems.Add(theme);
-            view.DropDownItems.Add(new ToolStripSeparator());
-            view.DropDownItems.Add("Zoom &In", null, (_, _) => Zoom(10));
-            view.DropDownItems.Add("Zoom &Out", null, (_, _) => Zoom(-10));
-            view.DropDownItems.Add("&Reset Zoom", null, (_, _) => Zoom(0, reset: true));
-
-            var navigate = new ToolStripMenuItem("&Navigate");
-            navigate.DropDownItems.Add("&Go to Heading...", null, (_, _) => ShowQuickJump(commandMode: false));
-            navigate.DropDownItems.Add("&Command Palette...", null, (_, _) => ShowQuickJump(commandMode: true));
-
-            var help = new ToolStripMenuItem("&Help");
-            help.DropDownItems.Add("&About MyMDEditor", null, (_, _) =>
-                MessageBox.Show(this, "MyMDEditor\nA lightweight, professional Markdown editor.", "About MyMDEditor",
-                    MessageBoxButtons.OK, MessageBoxIcon.Information));
-
-            _menu.Items.AddRange(new ToolStripItem[] { file, edit, view, navigate, help });
-            MainMenuStrip = _menu;
-            Controls.Add(_menu);
-        }
-
-        private ToolStripMenuItem _recentMenu = null!;
-        private ToolStripMenuItem _outlineToggle = null!;
-        private ToolStripMenuItem _wordWrapToggle = null!;
-        private ToolStripButton _themeToggleButton = null!;
-        private ToolStripMenuItem _themeDarkMenuItem = null!;
-        private ToolStripMenuItem _themeLightMenuItem = null!;
-        private ToolStripMenuItem _themeSystemMenuItem = null!;
-
-        private void BuildToolbar()
-        {
-            _toolbar.Items.Add(new ToolStripButton("New") { ToolTipText = "New (Ctrl+N)", DisplayStyle = ToolStripItemDisplayStyle.Text });
-            _toolbar.Items.Add(new ToolStripButton("Open") { ToolTipText = "Open (Ctrl+O)", DisplayStyle = ToolStripItemDisplayStyle.Text });
-            _toolbar.Items.Add(new ToolStripButton("Save") { ToolTipText = "Save (Ctrl+S)", DisplayStyle = ToolStripItemDisplayStyle.Text });
-            _toolbar.Items.Add(new ToolStripSeparator());
-            _toolbar.Items.Add(new ToolStripButton("Bold") { ToolTipText = "Bold (Ctrl+B)", DisplayStyle = ToolStripItemDisplayStyle.Text });
-            _toolbar.Items.Add(new ToolStripButton("Italic") { ToolTipText = "Italic (Ctrl+I)", DisplayStyle = ToolStripItemDisplayStyle.Text });
-            _toolbar.Items.Add(new ToolStripButton("Link") { ToolTipText = "Insert link (Ctrl+K)", DisplayStyle = ToolStripItemDisplayStyle.Text });
-            _toolbar.Items.Add(new ToolStripSeparator());
-            _toolbar.Items.Add(new ToolStripButton("Find") { ToolTipText = "Find (Ctrl+F)", DisplayStyle = ToolStripItemDisplayStyle.Text });
-            _toolbar.Items.Add(new ToolStripSeparator());
-            _themeToggleButton = new ToolStripButton(string.Empty) { ToolTipText = "Toggle dark/light theme", DisplayStyle = ToolStripItemDisplayStyle.Text };
-            _toolbar.Items.Add(_themeToggleButton);
-
-            foreach (ToolStripItem item in _toolbar.Items)
-            {
-                if (item is ToolStripButton button && button != _themeToggleButton)
-                {
-                    button.Click += (_, _) => OnToolbarClick(button.Text!);
-                }
-            }
-
-            _themeToggleButton.Click += (_, _) => SetTheme(_palette.IsDark ? "light" : "dark");
-
-            Controls.Add(_toolbar);
-        }
-
-        private async void OnToolbarClick(string name)
-        {
-            switch (name)
-            {
-                case "New": await NewDocumentAsync(); break;
-                case "Open": await OpenDocumentAsync(); break;
-                case "Save": await SaveDocumentAsync(); break;
-                case "Bold": WrapSelection("**"); break;
-                case "Italic": WrapSelection("_"); break;
-                case "Link": InsertLink(); break;
-                case "Find": ShowFind(withReplace: false); break;
-            }
-        }
 
         private void BuildStatusBar()
         {
@@ -219,33 +114,88 @@ namespace MyMDEditor
         {
             _preview.Dock = DockStyle.Fill;
             _innerSplit.Dock = DockStyle.Fill;
+            _innerSplit.Orientation = _settings.VerticalSplit ? Orientation.Vertical : Orientation.Horizontal;
 
+            // Docked controls are laid out from the last-added to the first-added, so the fill
+            // control must be added first and the edge-docked controls after it.
             var editorPanel = new Panel { Dock = DockStyle.Fill };
-            editorPanel.Controls.Add(_editor);
+            editorPanel.Controls.Add(_editorHost);
             editorPanel.Controls.Add(_findBar);
 
             _innerSplit.Panel1.Controls.Add(editorPanel);
             _innerSplit.Panel2.Controls.Add(_preview);
 
-            _outerSplit.Panel1.Controls.Add(_outlineTree);
+            _outlinePanel.Dock = DockStyle.Fill;
+            _outlinePanel.Controls.Add(_outlineTree);
+            _outlinePanel.Controls.Add(_outlineHeader);
+
+            _outerSplit.Panel1.Controls.Add(_outlinePanel);
             _outerSplit.Panel2.Controls.Add(_innerSplit);
             _outerSplit.Panel1MinSize = 120;
             _outerSplit.SplitterDistance = Math.Max(120, _settings.OutlineWidth);
             _outerSplit.Panel1Collapsed = !_settings.ShowOutline;
-
             _outerSplit.Dock = DockStyle.Fill;
-            Controls.Add(_outerSplit);
 
-            Shown += (_, _) => _innerSplit.SplitterDistance = Math.Max(200, Width / 2 - 100);
+            Controls.Add(_outerSplit);
+            Controls.Add(_tabStrip);
+            Controls.Add(_ribbon);
+            Controls.Add(_statusStrip);
+
+            Shown += (_, _) =>
+            {
+                _innerSplit.Panel1MinSize = 240;
+                _innerSplit.Panel2MinSize = 240;
+                SetViewMode(_settings.ViewMode);
+                ResetInnerSplit();
+            };
+        }
+
+        private readonly Panel _outlinePanel = new();
+
+        private void ResetInnerSplit()
+        {
+            if (!_innerSplit.IsHandleCreated)
+            {
+                return;
+            }
+
+            var extent = _innerSplit.Orientation == Orientation.Vertical ? _innerSplit.Width : _innerSplit.Height;
+            var min = _innerSplit.Panel1MinSize;
+            var max = extent - _innerSplit.Panel2MinSize - _innerSplit.SplitterWidth;
+            if (max >= min)
+            {
+                _innerSplit.SplitterDistance = Math.Clamp(extent / 2, min, max);
+            }
         }
 
         private void WireEvents()
         {
-            _editor.TextChanged += OnEditorTextChanged;
-            _editor.KeyDown += OnEditorKeyDown;
             _caretTimer.Tick += (_, _) => UpdateCaretStatus();
             _caretTimer.Start();
             _autoSaveTimer.Tick += async (_, _) => await OnAutoSaveTickAsync();
+
+            _tabStrip.SelectedIndexChanged += (_, _) =>
+            {
+                if (_tabStrip.SelectedIndex >= 0 && _tabStrip.SelectedIndex < _documents.Count)
+                {
+                    ActivateDocument(_documents[_tabStrip.SelectedIndex]);
+                }
+            };
+            _tabStrip.CloseRequested += async (_, index) =>
+            {
+                if (index >= 0 && index < _documents.Count)
+                {
+                    await CloseDocumentAsync(_documents[index]);
+                }
+            };
+            _tabStrip.NewRequested += (_, _) => _ = NewDocumentAsync();
+            _tabStrip.TabMoved += (_, move) =>
+            {
+                var moved = _documents[move.From];
+                _documents.RemoveAt(move.From);
+                _documents.Insert(move.To, moved);
+            };
+            _tabStrip.ContextRequested += (_, request) => ShowTabContextMenu(request.Index, request.ScreenLocation);
 
             _findBar.QueryChanged += (_, _) => RunSearch(selectCurrent: false);
             _findBar.NextRequested += (_, _) => FindNext();
@@ -267,36 +217,75 @@ namespace MyMDEditor
             KeyDown += OnFormKeyDown;
         }
 
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        {
+            switch (keyData)
+            {
+                case Keys.Control | Keys.T:
+                    _ = NewDocumentAsync();
+                    return true;
+                case Keys.Control | Keys.W:
+                    _ = CloseDocumentAsync(_active);
+                    return true;
+                case Keys.Control | Keys.Tab:
+                    CycleTabs(1);
+                    return true;
+                case Keys.Control | Keys.Shift | Keys.Tab:
+                    CycleTabs(-1);
+                    return true;
+            }
+
+            return base.ProcessCmdKey(ref msg, keyData);
+        }
+
+        private void CycleTabs(int direction)
+        {
+            if (_documents.Count < 2)
+            {
+                return;
+            }
+
+            var next = (_documents.IndexOf(_active) + direction + _documents.Count) % _documents.Count;
+            ActivateDocument(_documents[next]);
+        }
+
         // ---------------------------------------------------------------- Startup / shutdown
 
         private async Task OnFormLoadAsync(string? filePathToOpen)
         {
+            // Created here rather than in the constructor so the editor gets a window handle straight away;
+            // a RichTextBox that gets its handle later can report itself as modified.
+            ActivateDocument(AddDocument(new DocumentTab(CreateEditor())));
             try
             {
-                var orphan = _recovery.FindOrphan();
+                var orphans = _recovery.FindOrphans();
                 if (filePathToOpen is not null)
                 {
-                    await LoadFileAsync(filePathToOpen);
+                    await OpenPathAsync(filePathToOpen);
                 }
-                else if (orphan is not null && orphan.Text.Length > 0)
+                else if (_settings.RestoreSession)
                 {
-                    var choice = MessageBox.Show(this,
-                        "MyMDEditor found unsaved work from a previous session that did not close normally. Restore it?",
-                        "Recover unsaved work", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
-                    if (choice == DialogResult.Yes)
+                    var files = _settings.OpenFiles.Count > 0
+                        ? _settings.OpenFiles
+                        : _settings.LastFile is { Length: > 0 } last ? new List<string> { last } : new List<string>();
+                    foreach (var file in files.Where(File.Exists))
                     {
-                        SetEditorText(orphan.Text);
-                        if (!string.IsNullOrEmpty(orphan.OriginalPath))
-                        {
-                            await LoadFileAsync(orphan.OriginalPath!, keepRecoveredText: true);
-                        }
+                        await OpenPathAsync(file);
+                    }
+
+                    var previous = _settings.LastFile;
+                    var restoreActive = previous is null
+                        ? null
+                        : _documents.FirstOrDefault(d => string.Equals(d.FilePath, previous, StringComparison.OrdinalIgnoreCase));
+                    if (restoreActive is not null)
+                    {
+                        ActivateDocument(restoreActive);
+                        _editor.SelectionStart = Math.Min(_settings.LastCaret, _editor.TextLength);
+                        _editor.ScrollToCaret();
                     }
                 }
-                else if (_settings.RestoreSession && !string.IsNullOrEmpty(_settings.LastFile) && File.Exists(_settings.LastFile))
-                {
-                    await LoadFileAsync(_settings.LastFile!);
-                    _editor.SelectionStart = Math.Min(_settings.LastCaret, _editor.TextLength);
-                }
+
+                await RestoreRecoveredAsync(orphans);
 
                 if (_autoSaveTimer.Enabled = _settings.AutoSaveEnabled)
                 {
@@ -313,6 +302,42 @@ namespace MyMDEditor
             }
         }
 
+        private async Task RestoreRecoveredAsync(IReadOnlyList<RecoverySnapshot> orphans)
+        {
+            var candidates = orphans.Where(o => o.Text.Length > 0).ToList();
+            if (candidates.Count == 0)
+            {
+                return;
+            }
+
+            var choice = MessageBox.Show(this,
+                $"MyMDEditor found unsaved work ({candidates.Count} document{(candidates.Count == 1 ? string.Empty : "s")}) from a previous session that did not close normally. Restore it?",
+                "Recover unsaved work", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+            if (choice != DialogResult.Yes)
+            {
+                return;
+            }
+
+            foreach (var snapshot in candidates)
+            {
+                DocumentTab? doc = null;
+                if (!string.IsNullOrEmpty(snapshot.OriginalPath) && File.Exists(snapshot.OriginalPath))
+                {
+                    doc = await OpenPathAsync(snapshot.OriginalPath);
+                }
+
+                if (doc is null)
+                {
+                    doc = _active.IsPristine ? _active : AddDocument(new DocumentTab(CreateEditor()));
+                    ActivateDocument(doc);
+                }
+
+                SetText(doc, snapshot.Text);
+                doc.Editor.Modified = true;
+                RefreshTab(doc);
+            }
+        }
+
         private async void OnFormClosing(object? sender, FormClosingEventArgs e)
         {
             if (_closing)
@@ -320,38 +345,58 @@ namespace MyMDEditor
                 return;
             }
 
-            if (_editor.Modified)
+            if (_documents.Any(d => d.IsModified))
             {
-                var choice = MessageBox.Show(this, "Save changes before closing?", "MyMDEditor",
-                    MessageBoxButtons.YesNoCancel, MessageBoxIcon.Warning);
-                if (choice == DialogResult.Cancel)
+                e.Cancel = true;
+                if (!await ConfirmCloseAllAsync())
                 {
-                    e.Cancel = true;
                     return;
                 }
 
-                if (choice == DialogResult.Yes)
+                PersistSession();
+                _closing = true;
+                Close();
+                return;
+            }
+
+            PersistSession();
+            _closing = true;
+        }
+
+        private async Task<bool> ConfirmCloseAllAsync()
+        {
+            foreach (var doc in _documents.Where(d => d.IsModified).ToList())
+            {
+                ActivateDocument(doc);
+                var choice = MessageBox.Show(this, $"Save changes to {doc.Title} before closing?", "MyMDEditor",
+                    MessageBoxButtons.YesNoCancel, MessageBoxIcon.Warning);
+                if (choice == DialogResult.Cancel)
                 {
-                    e.Cancel = true;
-                    _closing = true;
-                    var saved = await SaveDocumentAsync();
-                    _closing = false;
-                    if (!saved)
-                    {
-                        return;
-                    }
+                    return false;
+                }
+
+                if (choice == DialogResult.Yes && !await SaveDocumentAsync(doc))
+                {
+                    return false;
                 }
             }
 
+            return true;
+        }
+
+        private void PersistSession()
+        {
             _recovery.Clear();
-            _settings.LastFile = _fileService.CurrentFilePath;
+            _settings.OpenFiles = _documents.Select(d => d.FilePath).OfType<string>().ToList();
+            _settings.LastFile = _active.FilePath;
             _settings.LastCaret = _editor.SelectionStart;
-            _settings.OutlineWidth = _outerSplit.SplitterDistance;
+            if (!_outerSplit.Panel1Collapsed)
+            {
+                _settings.OutlineWidth = _outerSplit.SplitterDistance;
+            }
+
             _settings.Window = CapturePlacement();
             _settingsService.Save(_settings);
-            e.Cancel = false;
-            _closing = true;
-            Close();
         }
 
         private WindowPlacement CapturePlacement() => new()
@@ -368,9 +413,14 @@ namespace MyMDEditor
             var window = _settings.Window;
             if (window is { Width: > 100, Height: > 100 })
             {
-                StartPosition = FormStartPosition.Manual;
-                Location = new Point(window.X, window.Y);
-                Size = new Size(window.Width, window.Height);
+                var bounds = new Rectangle(window.X, window.Y, window.Width, window.Height);
+                if (IsTitleBarReachable(bounds))
+                {
+                    StartPosition = FormStartPosition.Manual;
+                    Location = bounds.Location;
+                    Size = bounds.Size;
+                }
+
                 if (window.Maximized)
                 {
                     WindowState = FormWindowState.Maximized;
@@ -378,94 +428,131 @@ namespace MyMDEditor
             }
         }
 
-        // ---------------------------------------------------------------- File operations
-
-        private async Task NewDocumentAsync()
+        /// <summary>
+        /// Guards against restoring onto a monitor that is no longer connected: the title bar
+        /// strip must overlap a current screen's working area by a usable amount.
+        /// </summary>
+        private static bool IsTitleBarReachable(Rectangle bounds)
         {
-            if (!await ConfirmDiscardChangesAsync())
+            var titleBar = new Rectangle(bounds.X, bounds.Y, bounds.Width, 40);
+            foreach (var screen in Screen.AllScreens)
             {
-                return;
+                var overlap = Rectangle.Intersect(titleBar, screen.WorkingArea);
+                if (overlap.Width >= 100 && overlap.Height >= 20)
+                {
+                    return true;
+                }
             }
 
-            _fileService.Reset();
-            SetEditorText(string.Empty);
-            _editor.Modified = false;
-            Text = "Untitled - MyMDEditor";
-            UpdateEncodingStatus();
-            ScheduleRender();
+            return false;
+        }
+
+        // ---------------------------------------------------------------- File operations
+
+        private Task NewDocumentAsync()
+        {
+            ActivateDocument(AddDocument(new DocumentTab(CreateEditor())));
+            return Task.CompletedTask;
         }
 
         private async Task OpenDocumentAsync()
         {
-            if (!await ConfirmDiscardChangesAsync())
+            using var dialog = new OpenFileDialog
             {
-                return;
-            }
-
-            using var dialog = new OpenFileDialog { Filter = "Markdown files (*.md;*.markdown)|*.md;*.markdown|All files (*.*)|*.*" };
+                Filter = "Markdown files (*.md;*.markdown)|*.md;*.markdown|All files (*.*)|*.*",
+                Multiselect = true,
+            };
             if (dialog.ShowDialog(this) == DialogResult.OK)
             {
-                await LoadFileAsync(dialog.FileName);
+                foreach (var file in dialog.FileNames)
+                {
+                    await OpenPathAsync(file);
+                }
             }
         }
 
-        private async Task LoadFileAsync(string path, bool keepRecoveredText = false)
+        /// <summary>Opens <paramref name="path"/> in a tab, switching to it if it is already open.</summary>
+        private async Task<DocumentTab?> OpenPathAsync(string path)
         {
             try
             {
-                var text = await _fileService.OpenFileAsync(path);
-                if (!keepRecoveredText)
+                var fullPath = Path.GetFullPath(path);
+                var existing = _documents.FirstOrDefault(d =>
+                    d.FilePath is { } p && string.Equals(Path.GetFullPath(p), fullPath, StringComparison.OrdinalIgnoreCase));
+                if (existing is not null)
                 {
-                    SetEditorText(text);
+                    ActivateDocument(existing);
+                    return existing;
                 }
 
-                _editor.Modified = false;
-                Text = $"{Path.GetFileName(path)} - MyMDEditor";
+                var service = new FileManagementService();
+                var text = await service.OpenFileAsync(path);
+
+                var replaceable = _active is { IsPristine: true } ? _active : null;
+                var doc = AddDocument(new DocumentTab(CreateEditor(), service));
+                SetText(doc, text);
+                ActivateDocument(doc);
+                if (replaceable is not null)
+                {
+                    RemoveDocument(replaceable);
+                }
+
+                RefreshTab(doc);
                 _settings.AddRecent(path);
                 RebuildRecentMenu();
-                UpdateEncodingStatus();
-                ScheduleRender();
+                return doc;
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
             {
                 AppLogger.Error($"Failed to open '{path}'.", ex);
                 MessageBox.Show(this, $"Could not open the file:\n{ex.Message}", "MyMDEditor", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return null;
             }
         }
 
-        private async Task<bool> SaveDocumentAsync()
+        private async Task<bool> SaveDocumentAsync(DocumentTab? doc = null)
         {
-            var path = _fileService.CurrentFilePath;
+            doc ??= _active;
+            var path = doc.FilePath;
             if (path is null)
             {
-                return await SaveDocumentAsAsync();
+                return await SaveDocumentAsAsync(doc);
             }
 
-            return await SaveToAsync(path);
+            return await SaveToAsync(doc, path);
         }
 
-        private async Task<bool> SaveDocumentAsAsync()
+        private async Task<bool> SaveDocumentAsAsync(DocumentTab? doc = null)
         {
-            using var dialog = new SaveFileDialog { Filter = "Markdown files (*.md)|*.md|All files (*.*)|*.*", FileName = "Untitled.md" };
+            doc ??= _active;
+            using var dialog = new SaveFileDialog
+            {
+                Filter = "Markdown files (*.md)|*.md|All files (*.*)|*.*",
+                FileName = doc.FilePath is { } current ? Path.GetFileName(current) : "Untitled.md",
+            };
             if (dialog.ShowDialog(this) != DialogResult.OK)
             {
                 return false;
             }
 
-            return await SaveToAsync(dialog.FileName);
+            return await SaveToAsync(doc, dialog.FileName);
         }
 
-        private async Task<bool> SaveToAsync(string path)
+        private async Task<bool> SaveToAsync(DocumentTab doc, string path)
         {
             try
             {
-                await _fileService.SaveFileAsync(path, _editor.Text);
-                _editor.Modified = false;
-                Text = $"{Path.GetFileName(path)} - MyMDEditor";
+                await doc.File.SaveFileAsync(path, doc.Editor.Text);
+                doc.Editor.Modified = false;
                 _settings.AddRecent(path);
                 RebuildRecentMenu();
-                UpdateEncodingStatus();
-                _recovery.Clear();
+                _recovery.Clear(doc.Id);
+                RefreshTab(doc);
+                if (ReferenceEquals(doc, _active))
+                {
+                    UpdateEncodingStatus();
+                }
+
                 return true;
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
@@ -476,38 +563,20 @@ namespace MyMDEditor
             }
         }
 
-        private async Task<bool> ConfirmDiscardChangesAsync()
-        {
-            if (!_editor.Modified)
-            {
-                return true;
-            }
-
-            var choice = MessageBox.Show(this, "Save changes to the current document?", "MyMDEditor",
-                MessageBoxButtons.YesNoCancel, MessageBoxIcon.Warning);
-            return choice switch
-            {
-                DialogResult.Yes => await SaveDocumentAsync(),
-                DialogResult.No => true,
-                _ => false,
-            };
-        }
-
         private async Task OnAutoSaveTickAsync()
         {
-            if (_fileService.CurrentFilePath is not null && _editor.Modified)
+            foreach (var doc in _documents.Where(d => d.FilePath is not null && d.IsModified).ToList())
             {
-                await SaveToAsync(_fileService.CurrentFilePath);
+                await SaveToAsync(doc, doc.FilePath!);
             }
         }
 
         private void RebuildRecentMenu()
         {
-            _recentMenu.DropDownItems.Clear();
+            _recentMenu.Items.Clear();
             if (_settings.RecentFiles.Count == 0)
             {
-                _recentMenu.DropDownItems.Add(new ToolStripMenuItem("(No recent files)") { Enabled = false });
-                return;
+                _recentMenu.Items.Add(new ToolStripMenuItem("(No recent files)") { Enabled = false });
             }
 
             foreach (var path in _settings.RecentFiles)
@@ -523,13 +592,12 @@ namespace MyMDEditor
                         return;
                     }
 
-                    if (await ConfirmDiscardChangesAsync())
-                    {
-                        await LoadFileAsync(path);
-                    }
+                    await OpenPathAsync(path);
                 };
-                _recentMenu.DropDownItems.Add(item);
+                _recentMenu.Items.Add(item);
             }
+
+            ThemeApplier.ApplyToolStrip(_recentMenu, _palette);
         }
 
         // ---------------------------------------------------------------- Export
@@ -602,15 +670,24 @@ namespace MyMDEditor
 
         // ---------------------------------------------------------------- Editor conveniences
 
-        private void SetEditorText(string text)
+        private void SetEditorText(string text) => SetText(_active, text);
+
+        private void SetText(DocumentTab doc, string text)
         {
             _suppressTextEvents = true;
-            _editor.Text = text;
+            doc.Editor.Text = text;
+            doc.Editor.ClearUndo();
+            doc.Editor.Modified = false;
             _suppressTextEvents = false;
         }
 
         private void OnEditorTextChanged(object? sender, EventArgs e)
         {
+            if (!ReferenceEquals(sender, _active?.Editor))
+            {
+                return;
+            }
+
             UpdateModifiedStatus();
             if (_suppressTextEvents)
             {
@@ -620,13 +697,28 @@ namespace MyMDEditor
             ScheduleRender();
             _recoveryDebouncer.Debounce(() =>
             {
-                _recovery.Save(_fileService.CurrentFilePath, _editor.Text);
+                SaveRecoverySnapshots();
                 return Task.CompletedTask;
             });
 
             if (_findBar.Visible)
             {
                 RunSearch(selectCurrent: false);
+            }
+        }
+
+        private void SaveRecoverySnapshots()
+        {
+            foreach (var doc in _documents)
+            {
+                if (doc.IsModified)
+                {
+                    _recovery.Save(doc.FilePath, doc.Editor.Text, doc.Id);
+                }
+                else
+                {
+                    _recovery.Clear(doc.Id);
+                }
             }
         }
 
@@ -665,6 +757,14 @@ namespace MyMDEditor
                     InsertLink();
                     e.Handled = true;
                     e.SuppressKeyPress = true;
+                    return;
+                case Keys.Control | Keys.V:
+                    if (Clipboard.ContainsText())
+                    {
+                        ((RichTextBox)sender!).SelectedText = Clipboard.GetText(TextDataFormat.UnicodeText);
+                        e.Handled = true;
+                        e.SuppressKeyPress = true;
+                    }
                     return;
             }
         }
@@ -711,6 +811,20 @@ namespace MyMDEditor
                     break;
                 case Keys.Control | Keys.Shift | Keys.S:
                     _ = SaveDocumentAsAsync();
+                    e.Handled = true;
+                    break;
+                case Keys.Control | Keys.Oemplus:
+                case Keys.Control | Keys.Add:
+                    Zoom(10);
+                    e.Handled = true;
+                    break;
+                case Keys.Control | Keys.OemMinus:
+                case Keys.Control | Keys.Subtract:
+                    Zoom(-10);
+                    e.Handled = true;
+                    break;
+                case Keys.Control | Keys.D0:
+                    Zoom(0, reset: true);
                     e.Handled = true;
                     break;
             }
@@ -812,13 +926,55 @@ namespace MyMDEditor
         private void Zoom(int deltaPercent, bool reset = false)
         {
             _settings.ZoomPercent = reset ? 100 : Math.Clamp(_settings.ZoomPercent + deltaPercent, 50, 300);
-            _editor.Font = new Font(_editor.Font.FontFamily, 11F * _settings.ZoomPercent / 100F);
+            foreach (var doc in _documents)
+            {
+                var wasModified = doc.Editor.Modified;
+                doc.Editor.Font = CreateEditorFont();
+                doc.Editor.Modified = wasModified;
+            }
         }
 
         private void SetOutlineVisible(bool visible)
         {
             _settings.ShowOutline = visible;
             _outerSplit.Panel1Collapsed = !visible;
+            UpdateRibbonState();
+        }
+
+        private void SetWordWrap(bool wrap)
+        {
+            _settings.WordWrap = wrap;
+            foreach (var doc in _documents)
+            {
+                doc.Editor.WordWrap = wrap;
+            }
+
+            UpdateRibbonState();
+        }
+
+        private void SetViewMode(string mode)
+        {
+            _settings.ViewMode = mode;
+            _innerSplit.Panel1Collapsed = mode == "preview";
+            _innerSplit.Panel2Collapsed = mode == "editor";
+            if (mode == "split")
+            {
+                ResetInnerSplit();
+            }
+
+            UpdateRibbonState();
+            if (mode != "editor")
+            {
+                ScheduleRender();
+            }
+        }
+
+        private void SetSplitOrientation(bool sideBySide)
+        {
+            _settings.VerticalSplit = sideBySide;
+            _innerSplit.Orientation = sideBySide ? Orientation.Vertical : Orientation.Horizontal;
+            ResetInnerSplit();
+            UpdateRibbonState();
         }
 
         private void SetTheme(string theme)
@@ -833,55 +989,66 @@ namespace MyMDEditor
             BackColor = _palette.Window;
             ForeColor = _palette.Text;
             ThemeApplier.ApplyTitleBar(this, _palette);
-            ThemeApplier.ApplyToolStrip(_menu, _palette);
-            ThemeApplier.ApplyToolStrip(_toolbar, _palette);
+            _ribbon.ApplyTheme(_palette);
+            _tabStrip.ApplyTheme(_palette);
             ThemeApplier.ApplyToolStrip(_statusStrip, _palette);
 
-            var wasModified = _editor.Modified;
-            _editor.BackColor = _palette.EditorBack;
-            _editor.ForeColor = _palette.EditorText;
-            _editor.Modified = wasModified;
+            _editorHost.BackColor = _palette.EditorBack;
+            foreach (var doc in _documents)
+            {
+                var wasModified = doc.Editor.Modified;
+                doc.Editor.BackColor = _palette.EditorBack;
+                doc.Editor.ForeColor = _palette.EditorText;
+                doc.Editor.Modified = wasModified;
+                ThemeApplier.ApplyScrollbars(doc.Editor, _palette);
+            }
 
+            _outlinePanel.BackColor = _palette.Surface;
+            _outlineHeader.BackColor = _palette.Surface;
+            _outlineHeader.ForeColor = _palette.MutedText;
             _outlineTree.BackColor = _palette.Surface;
             _outlineTree.ForeColor = _palette.Text;
+            ThemeApplier.ApplyScrollbars(_outlineTree, _palette);
             _outerSplit.BackColor = _palette.Border;
             _innerSplit.BackColor = _palette.Border;
 
             _findBar.ApplyTheme(_palette);
+            RebuildRecentMenu();
             if (_previewReady)
             {
                 PostToPreview(new { type = "theme", theme = _palette.PreviewTheme });
             }
 
-            _themeToggleButton.Text = _palette.IsDark ? "? Light" : "?? Dark";
-            _themeToggleButton.ToolTipText = _palette.IsDark ? "Switch to light theme" : "Switch to dark theme";
-
-            _themeDarkMenuItem.Checked = _settings.Theme == "dark";
-            _themeLightMenuItem.Checked = _settings.Theme == "light";
-            _themeSystemMenuItem.Checked = _settings.Theme == "system";
+            UpdateRibbonState();
         }
 
         private void UpdateModifiedStatus()
         {
-            _statusModified.Text = _editor.Modified ? "? Unsaved changes" : "Saved";
+            _statusModified.Text = _editor.Modified ? "\u25CF Unsaved changes" : "Saved";
         }
 
         private void UpdateEncodingStatus()
         {
             var format = _fileService.CurrentFormat;
-            _statusEncoding.Text = $"{format.EncodingName} · {format.LineEndingName}";
+            _statusEncoding.Text = $"{format.EncodingName} \u00B7 {format.LineEndingName}";
         }
 
         private void UpdateCaretStatus()
         {
-            var index = new LineIndex(_editor.Text);
+            if (_active is null)
+            {
+                return;
+            }
+
+            var text = _editor.Text;
+            var index = new LineIndex(text);
             var caret = _editor.SelectionStart;
             var line = index.GetLineFromOffset(caret);
             var column = index.GetColumnFromOffset(caret);
             _statusPosition.Text = $"Ln {line + 1}, Col {column + 1}";
 
-            var stats = TextStatistics.Compute(_editor.Text);
-            _statusStats.Text = $"{stats.Words:N0} words · {stats.Characters:N0} chars · {stats.ReadingMinutes} min read";
+            var stats = TextStatistics.Compute(text);
+            _statusStats.Text = $"{stats.Words:N0} words \u00B7 {stats.Characters:N0} chars \u00B7 {stats.ReadingMinutes} min read";
 
             if (line != _lastCaretLine)
             {
@@ -1085,15 +1252,21 @@ namespace MyMDEditor
 
             IReadOnlyList<PaletteItem> Commands() => new[]
             {
-                new PaletteItem("New File", "Ctrl+N", () => _ = NewDocumentAsync()),
+                new PaletteItem("New Tab", "Ctrl+T", () => _ = NewDocumentAsync()),
                 new PaletteItem("Open File...", "Ctrl+O", () => _ = OpenDocumentAsync()),
+                new PaletteItem("Close Tab", "Ctrl+W", () => _ = CloseDocumentAsync(_active)),
+                new PaletteItem("Next Tab", "Ctrl+Tab", () => CycleTabs(1)),
+                new PaletteItem("Previous Tab", "Ctrl+Shift+Tab", () => CycleTabs(-1)),
                 new PaletteItem("Save", "Ctrl+S", () => _ = SaveDocumentAsync()),
                 new PaletteItem("Save As...", "Ctrl+Shift+S", () => _ = SaveDocumentAsAsync()),
                 new PaletteItem("Export as HTML...", string.Empty, () => _ = ExportHtmlAsync()),
                 new PaletteItem("Export as Word Document...", string.Empty, () => _ = ExportDocxAsync()),
                 new PaletteItem("Export as PDF...", string.Empty, () => _ = ExportPdfAsync()),
-                new PaletteItem("Toggle Document Outline", string.Empty, () => { _outlineToggle.Checked = !_outlineToggle.Checked; }),
-                new PaletteItem("Toggle Word Wrap", string.Empty, () => { _wordWrapToggle.Checked = !_wordWrapToggle.Checked; }),
+                new PaletteItem("Toggle Document Outline", string.Empty, () => SetOutlineVisible(!_settings.ShowOutline)),
+                new PaletteItem("Toggle Word Wrap", string.Empty, () => SetWordWrap(!_settings.WordWrap)),
+                new PaletteItem("Show Editor Only", string.Empty, () => SetViewMode("editor")),
+                new PaletteItem("Show Preview Only", string.Empty, () => SetViewMode("preview")),
+                new PaletteItem("Show Editor and Preview", string.Empty, () => SetViewMode("split")),
                 new PaletteItem("Switch to Dark Theme", string.Empty, () => SetTheme("dark")),
                 new PaletteItem("Switch to Light Theme", string.Empty, () => SetTheme("light")),
             };
@@ -1199,6 +1372,12 @@ namespace MyMDEditor
                 {
                     var baseHref = _fileService.CurrentFilePath is { } path ? new Uri(Path.GetDirectoryName(Path.GetFullPath(path)) + Path.DirectorySeparatorChar).AbsoluteUri : "about:blank";
                     PostToPreview(new { type = "content", html = result.BodyHtml, baseHref });
+                    if (_resyncPreviewAfterRender)
+                    {
+                        _resyncPreviewAfterRender = false;
+                        var caretLine = new LineIndex(markdown).GetLineFromOffset(Math.Min(_editor.SelectionStart, markdown.Length));
+                        SyncPreviewToLine(caretLine, scroll: true, flash: false);
+                    }
                     if (_findBar.Visible)
                     {
                         PostFindSpec(_findBar.Options);
@@ -1348,6 +1527,12 @@ namespace MyMDEditor
                 _autoSaveTimer.Dispose();
                 _renderCts.Dispose();
                 _preview.Dispose();
+                _ribbon.Dispose();
+                _tabStrip.Dispose();
+                foreach (var doc in _documents)
+                {
+                    doc.Dispose();
+                }
             }
 
             base.Dispose(disposing);

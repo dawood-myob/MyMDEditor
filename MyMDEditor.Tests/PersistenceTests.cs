@@ -232,5 +232,47 @@ namespace MyMDEditor.Tests
             service.Clear();
             Assert.IsEmpty(Directory.GetFiles(_dir));
         }
+
+        [TestMethod]
+        public void Recovery_PerDocumentKeys_AreIndependentAndAllOrphansReturned()
+        {
+            var dead = new RecoveryService(_dir, processId: int.MaxValue);
+            dead.Save(@"C:\one.md", "first", "tab1");
+            dead.Save(null, "second", "tab2");
+            dead.Save(@"C:\one.md", "first (edited)", "tab1");
+            var current = new RecoveryService(_dir, processId: Environment.ProcessId);
+
+            var orphans = current.FindOrphans();
+
+            Assert.HasCount(2, orphans);
+            CollectionAssert.AreEquivalent(new[] { "first (edited)", "second" }, orphans.Select(o => o.Text).ToArray());
+            Assert.IsEmpty(current.FindOrphans(), "Orphans should only be offered once.");
+        }
+
+        [TestMethod]
+        public void Recovery_ClearWithKey_RemovesOnlyThatDocument()
+        {
+            var service = new RecoveryService(_dir, processId: Environment.ProcessId);
+            service.Save(null, "a", "tab1");
+            service.Save(null, "b", "tab2");
+
+            service.Clear("tab1");
+
+            Assert.HasCount(1, Directory.GetFiles(_dir));
+            service.Clear();
+            Assert.IsEmpty(Directory.GetFiles(_dir));
+        }
+
+        [TestMethod]
+        public void Settings_OpenFiles_RoundTripsAndIsSanitised()
+        {
+            var service = new SettingsService(Path.Combine(_dir, "s.json"));
+            var settings = new AppSettings { OpenFiles = new List<string> { @"C:\a.md", @"c:\A.MD", @"C:\b.md" } };
+
+            service.Save(settings);
+            var loaded = service.Load();
+
+            CollectionAssert.AreEqual(new[] { @"C:\a.md", @"C:\b.md" }, loaded.OpenFiles);
+        }
     }
 }
