@@ -1,3 +1,4 @@
+using MyMDEditor.Infrastructure;
 using MyMDEditor.Services.Editing;
 using MyMDEditor.UI;
 
@@ -15,6 +16,10 @@ namespace MyMDEditor
         private RibbonButton? _themeDarkButton;
         private RibbonButton? _themeLightButton;
         private RibbonButton? _themeSystemButton;
+        private readonly PaneSwitcher _paneSwitcher = new();
+        private const int OutlineSegment = 0;
+        private const int EditorSegment = 1;
+        private const int PreviewSegment = 2;
 
         // ---------------------------------------------------------------- Ribbon
 
@@ -110,7 +115,69 @@ namespace MyMDEditor
             AddCommand(formats, "Word", "DOCX", true, () => _ = ExportDocxAsync(), "Export as Word document", GlyphKind.Text, refocusEditor: false);
             AddCommand(formats, "PDF", "PDF", true, () => _ = ExportPdfAsync(), "Export as PDF", GlyphKind.Text, refocusEditor: false);
 
+            var help = _ribbon.AddPage("Help");
+            var guide = help.AddGroup("Guide");
+            AddCommand(guide, "User Guide", "\uE897", true, () => ShowHelp("Getting started"), "How to use MyMDEditor (F1)", refocusEditor: false);
+            AddCommand(guide, "Shortcuts", "\uE765", true, () => ShowHelp("Keyboard shortcuts"), "Keyboard shortcuts", refocusEditor: false);
+            AddCommand(guide, "Tabs & Layout", "\uE8A1", true, () => ShowHelp("Tabs and files"), "Working with tabs and panes", refocusEditor: false);
+            var about = help.AddGroup("About");
+            AddCommand(about, "About", "\uE946", true, () => ShowHelp("About"), "About MyMDEditor and its developer", refocusEditor: false);
+            AddCommand(about, "Developer", "\uE774", true, OpenDeveloperWebsite, $"{HelpDialog.DeveloperName} \u2013 {HelpDialog.DeveloperSite}", refocusEditor: false);
+
+            const string lastPane = "Keep at least one of Editor or Preview visible";
+            _paneSwitcher.Add("\uE700", "Outline", "Show or hide the document outline", string.Empty);
+            _paneSwitcher.Add("\uE70F", "Editor", "Show or hide the Markdown editor", lastPane);
+            _paneSwitcher.Add("\uE7B3", "Preview", "Show or hide the live preview", lastPane);
+            _paneSwitcher.SegmentClicked += index =>
+            {
+                switch (index)
+                {
+                    case OutlineSegment:
+                        SetOutlineVisible(!_settings.ShowOutline);
+                        break;
+                    case EditorSegment:
+                        SetPaneVisible(editor: _settings.ViewMode == "preview", preview: _settings.ViewMode != "editor");
+                        break;
+                    case PreviewSegment:
+                        SetPaneVisible(editor: _settings.ViewMode != "preview", preview: _settings.ViewMode == "editor");
+                        break;
+                }
+
+                _active?.Editor.Focus();
+            };
+            _ribbon.SetHeaderSwitcher(_paneSwitcher);
+
             _ribbon.Finish();
+        }
+
+        private void ShowHelp(string topic)
+        {
+            using var dialog = new HelpDialog(_palette, topic) { Icon = Icon };
+            dialog.ShowDialog(this);
+            _active?.Editor.Focus();
+        }
+
+        private static void OpenDeveloperWebsite()
+        {
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(HelpDialog.DeveloperUrl) { UseShellExecute = true });
+            }
+            catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+            {
+                AppLogger.Error("Could not open developer website", ex);
+            }
+        }
+
+        /// <summary>Applies independent editor/preview visibility; at least one of the two always stays visible.</summary>
+        private void SetPaneVisible(bool editor, bool preview)
+        {
+            if (!editor && !preview)
+            {
+                return;
+            }
+
+            SetViewMode(editor && preview ? "split" : editor ? "editor" : "preview");
         }
 
         private void UpdateRibbonState()
@@ -119,6 +186,12 @@ namespace MyMDEditor
             {
                 return;
             }
+
+            var editorVisible = _settings.ViewMode != "preview";
+            var previewVisible = _settings.ViewMode != "editor";
+            _paneSwitcher.SetState(OutlineSegment, _settings.ShowOutline, enabled: true);
+            _paneSwitcher.SetState(EditorSegment, editorVisible, enabled: !editorVisible || previewVisible);
+            _paneSwitcher.SetState(PreviewSegment, previewVisible, enabled: !previewVisible || editorVisible);
 
             _viewEditorButton.Checked = _settings.ViewMode == "editor";
             _viewSplitButton!.Checked = _settings.ViewMode == "split";

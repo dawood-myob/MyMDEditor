@@ -383,6 +383,7 @@ namespace MyMDEditor.UI
         private readonly Font _tabFont = new("Segoe UI", 9.5F);
         private readonly ToolTip _tooltip = new() { InitialDelay = 500 };
         private ThemePalette _palette = ThemePalette.Dark;
+        private PaneSwitcher? _switcher;
         private int _selected;
         private int _hover = -1;
 
@@ -418,18 +419,45 @@ namespace MyMDEditor.UI
             return button;
         }
 
+        /// <summary>Places <paramref name="switcher"/> at the right end of the page-tab row.</summary>
+        public void SetHeaderSwitcher(PaneSwitcher switcher)
+        {
+            _switcher = switcher;
+            Controls.Add(switcher);
+            LayoutHeader();
+        }
+
+        private void LayoutHeader()
+        {
+            if (_switcher is null)
+            {
+                return;
+            }
+
+            _switcher.Location = new Point(Math.Max(Dp(10), Width - _switcher.Width - Dp(14)), Math.Max(0, (HeaderHeight - _switcher.Height) / 2));
+        }
+
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+            LayoutHeader();
+        }
+
         public void Finish()
         {
             foreach (var page in _pages)
             {
                 page.Relayout();
             }
+
+            LayoutHeader();
         }
 
         public void ApplyTheme(ThemePalette palette)
         {
             _palette = palette;
             BackColor = palette.Window;
+            _switcher?.ApplyTheme(palette);
             foreach (var page in _pages)
             {
                 page.ApplyTheme(palette);

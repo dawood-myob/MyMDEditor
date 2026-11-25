@@ -83,6 +83,7 @@ namespace MyMDEditor
             MinimumSize = new Size(820, 520);
             StartPosition = FormStartPosition.CenterScreen;
             KeyPreview = true;
+            Icon = LoadAppIcon();
 
             _settings = _settingsService.Load();
             _palette = ThemePalette.Resolve(_settings.Theme);
@@ -827,6 +828,10 @@ namespace MyMDEditor
                     Zoom(0, reset: true);
                     e.Handled = true;
                     break;
+                case Keys.F1:
+                    ShowHelp("Getting started");
+                    e.Handled = true;
+                    break;
             }
         }
 
@@ -1269,6 +1274,9 @@ namespace MyMDEditor
                 new PaletteItem("Show Editor and Preview", string.Empty, () => SetViewMode("split")),
                 new PaletteItem("Switch to Dark Theme", string.Empty, () => SetTheme("dark")),
                 new PaletteItem("Switch to Light Theme", string.Empty, () => SetTheme("light")),
+                new PaletteItem("Help: User Guide", "F1", () => ShowHelp("Getting started")),
+                new PaletteItem("Help: Keyboard Shortcuts", string.Empty, () => ShowHelp("Keyboard shortcuts")),
+                new PaletteItem("Help: About MyMDEditor", string.Empty, () => ShowHelp("About")),
             };
 
             using var dialog = new QuickJumpDialog(_palette, Headings, Commands, GoToLine, commandMode);

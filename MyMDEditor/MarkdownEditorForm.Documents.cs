@@ -53,6 +53,30 @@ namespace MyMDEditor
             return editor;
         }
 
+        /// <summary>The title-bar icon: the embedded AppIcon.ico, falling back to the executable's own icon.</summary>
+        private static Icon? LoadAppIcon()
+        {
+            try
+            {
+                var assembly = typeof(MarkdownEditorForm).Assembly;
+                var name = assembly.GetManifestResourceNames().FirstOrDefault(n => n.EndsWith("AppIcon.ico", StringComparison.OrdinalIgnoreCase));
+                if (name is not null)
+                {
+                    using var stream = assembly.GetManifestResourceStream(name);
+                    if (stream is not null)
+                    {
+                        return new Icon(stream);
+                    }
+                }
+
+                return Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+            }
+            catch (Exception ex) when (ex is IOException or ArgumentException or InvalidOperationException)
+            {
+                return null;
+            }
+        }
+
         private Font CreateEditorFont()
         {
             _editorFontFamily ??= new[] { "Cascadia Code", "Cascadia Mono", "Consolas" }
