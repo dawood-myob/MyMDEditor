@@ -1,0 +1,35 @@
+name: mdhub
+
+services:
+  mdhub:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: mdhub:latest
+    container_name: mdhub
+    restart: unless-stopped
+    ports:
+      - "${MDHUB_PORT:-8080}:8080"
+    environment:
+      PORT: "8080"
+      DATA_DIR: /data
+      # Bootstrap platform administrator (created on first start only).
+      # The password MUST be changed at first login.
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-ChangeMe-Now-123}
+      # Set true only when served over HTTPS (reverse proxy / TLS).
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      TRUST_PROXY: ${TRUST_PROXY:-false}
+      # Creates a demo company ("acme") with sample users and documents.
+      SEED_DEMO: ${SEED_DEMO:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    volumes:
+      - mdhub-data:/data
+    # Chromium (PDF export) needs more shared memory than Docker's 64 MB default.
+    shm_size: "512m"
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  mdhub-data:
+    name: mdhub-data
