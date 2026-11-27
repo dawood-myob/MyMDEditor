@@ -33,8 +33,10 @@ namespace MyMDEditor
         private readonly ToolStripStatusLabel _statusEncoding = new("UTF-8");
         private readonly ToolStripStatusLabel _statusModified = new(string.Empty) { Spring = false };
 
-        private readonly SplitContainer _outerSplit = new() { Orientation = Orientation.Vertical, FixedPanel = FixedPanel.Panel1, SplitterWidth = 1 };
-        private readonly SplitContainer _innerSplit = new() { Orientation = Orientation.Vertical, SplitterWidth = 1 };
+        private readonly PaneLayoutHost _layoutHost = new() { Dock = DockStyle.Fill };
+        private readonly PanelFrame _outlineFrame = new(PaneId.Outline, "Outline", "\uE700");
+        private readonly PanelFrame _editorFrame = new(PaneId.Editor, "Editor", "\uE70F");
+        private readonly PanelFrame _previewFrame = new(PaneId.Preview, "Preview", "\uE7B3");
 
         private readonly TreeView _outlineTree = new()
         {
@@ -46,15 +48,6 @@ namespace MyMDEditor
             ItemHeight = 26,
             Indent = 16,
             Font = new Font("Segoe UI", 9.5F),
-        };
-        private readonly Label _outlineHeader = new()
-        {
-            Dock = DockStyle.Top,
-            Height = 34,
-            Text = "OUTLINE",
-            Font = new Font("Segoe UI Semibold", 8.5F),
-            TextAlign = ContentAlignment.MiddleLeft,
-            Padding = new Padding(14, 0, 0, 0),
         };
         private readonly Panel _editorHost = new() { Dock = DockStyle.Fill, Padding = new Padding(24, 18, 12, 8) };
         private readonly List<DocumentTab> _documents = new();
@@ -87,6 +80,7 @@ namespace MyMDEditor
 
             _settings = _settingsService.Load();
             _palette = ThemePalette.Resolve(_settings.Theme);
+            _layout = _settings.GetPaneLayout();
 
             BuildRibbon();
             BuildStatusBar();
@@ -111,63 +105,7 @@ namespace MyMDEditor
             Controls.Add(_statusStrip);
         }
 
-        private void BuildLayout()
-        {
-            _preview.Dock = DockStyle.Fill;
-            _innerSplit.Dock = DockStyle.Fill;
-            _innerSplit.Orientation = _settings.VerticalSplit ? Orientation.Vertical : Orientation.Horizontal;
-
-            // Docked controls are laid out from the last-added to the first-added, so the fill
-            // control must be added first and the edge-docked controls after it.
-            var editorPanel = new Panel { Dock = DockStyle.Fill };
-            editorPanel.Controls.Add(_editorHost);
-            editorPanel.Controls.Add(_findBar);
-
-            _innerSplit.Panel1.Controls.Add(editorPanel);
-            _innerSplit.Panel2.Controls.Add(_preview);
-
-            _outlinePanel.Dock = DockStyle.Fill;
-            _outlinePanel.Controls.Add(_outlineTree);
-            _outlinePanel.Controls.Add(_outlineHeader);
-
-            _outerSplit.Panel1.Controls.Add(_outlinePanel);
-            _outerSplit.Panel2.Controls.Add(_innerSplit);
-            _outerSplit.Panel1MinSize = 120;
-            _outerSplit.SplitterDistance = Math.Max(120, _settings.OutlineWidth);
-            _outerSplit.Panel1Collapsed = !_settings.ShowOutline;
-            _outerSplit.Dock = DockStyle.Fill;
-
-            Controls.Add(_outerSplit);
-            Controls.Add(_tabStrip);
-            Controls.Add(_ribbon);
-            Controls.Add(_statusStrip);
-
-            Shown += (_, _) =>
-            {
-                _innerSplit.Panel1MinSize = 240;
-                _innerSplit.Panel2MinSize = 240;
-                SetViewMode(_settings.ViewMode);
-                ResetInnerSplit();
-            };
-        }
-
-        private readonly Panel _outlinePanel = new();
-
-        private void ResetInnerSplit()
-        {
-            if (!_innerSplit.IsHandleCreated)
-            {
-                return;
-            }
-
-            var extent = _innerSplit.Orientation == Orientation.Vertical ? _innerSplit.Width : _innerSplit.Height;
-            var min = _innerSplit.Panel1MinSize;
-            var max = extent - _innerSplit.Panel2MinSize - _innerSplit.SplitterWidth;
-            if (max >= min)
-            {
-                _innerSplit.SplitterDistance = Math.Clamp(extent / 2, min, max);
-            }
-        }
+        private void BuildLayout() => BuildPaneLayout();
 
         private void WireEvents()
         {
@@ -220,6 +158,11 @@ namespace MyMDEditor
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
         {
+            if (TryHandleLayoutShortcut(keyData))
+            {
+                return true;
+            }
+
             switch (keyData)
             {
                 case Keys.Control | Keys.T:
@@ -391,11 +334,7 @@ namespace MyMDEditor
             _settings.OpenFiles = _documents.Select(d => d.FilePath).OfType<string>().ToList();
             _settings.LastFile = _active.FilePath;
             _settings.LastCaret = _editor.SelectionStart;
-            if (!_outerSplit.Panel1Collapsed)
-            {
-                _settings.OutlineWidth = _outerSplit.SplitterDistance;
-            }
-
+            _settings.SetPaneLayout(_layout);
             _settings.Window = CapturePlacement();
             _settingsService.Save(_settings);
         }
@@ -939,13 +878,6 @@ namespace MyMDEditor
             }
         }
 
-        private void SetOutlineVisible(bool visible)
-        {
-            _settings.ShowOutline = visible;
-            _outerSplit.Panel1Collapsed = !visible;
-            UpdateRibbonState();
-        }
-
         private void SetWordWrap(bool wrap)
         {
             _settings.WordWrap = wrap;
@@ -954,31 +886,6 @@ namespace MyMDEditor
                 doc.Editor.WordWrap = wrap;
             }
 
-            UpdateRibbonState();
-        }
-
-        private void SetViewMode(string mode)
-        {
-            _settings.ViewMode = mode;
-            _innerSplit.Panel1Collapsed = mode == "preview";
-            _innerSplit.Panel2Collapsed = mode == "editor";
-            if (mode == "split")
-            {
-                ResetInnerSplit();
-            }
-
-            UpdateRibbonState();
-            if (mode != "editor")
-            {
-                ScheduleRender();
-            }
-        }
-
-        private void SetSplitOrientation(bool sideBySide)
-        {
-            _settings.VerticalSplit = sideBySide;
-            _innerSplit.Orientation = sideBySide ? Orientation.Vertical : Orientation.Horizontal;
-            ResetInnerSplit();
             UpdateRibbonState();
         }
 
@@ -1008,14 +915,10 @@ namespace MyMDEditor
                 ThemeApplier.ApplyScrollbars(doc.Editor, _palette);
             }
 
-            _outlinePanel.BackColor = _palette.Surface;
-            _outlineHeader.BackColor = _palette.Surface;
-            _outlineHeader.ForeColor = _palette.MutedText;
             _outlineTree.BackColor = _palette.Surface;
             _outlineTree.ForeColor = _palette.Text;
             ThemeApplier.ApplyScrollbars(_outlineTree, _palette);
-            _outerSplit.BackColor = _palette.Border;
-            _innerSplit.BackColor = _palette.Border;
+            ApplyPaneLayoutTheme();
 
             _findBar.ApplyTheme(_palette);
             RebuildRecentMenu();
@@ -1255,8 +1158,8 @@ namespace MyMDEditor
                     $"Ln {entry.Line + 1}",
                     () => GoToLine(entry.Line))).ToList();
 
-            IReadOnlyList<PaletteItem> Commands() => new[]
-            {
+            IReadOnlyList<PaletteItem> Commands() =>
+            [
                 new PaletteItem("New Tab", "Ctrl+T", () => _ = NewDocumentAsync()),
                 new PaletteItem("Open File...", "Ctrl+O", () => _ = OpenDocumentAsync()),
                 new PaletteItem("Close Tab", "Ctrl+W", () => _ = CloseDocumentAsync(_active)),
@@ -1267,17 +1170,18 @@ namespace MyMDEditor
                 new PaletteItem("Export as HTML...", string.Empty, () => _ = ExportHtmlAsync()),
                 new PaletteItem("Export as Word Document...", string.Empty, () => _ = ExportDocxAsync()),
                 new PaletteItem("Export as PDF...", string.Empty, () => _ = ExportPdfAsync()),
-                new PaletteItem("Toggle Document Outline", string.Empty, () => SetOutlineVisible(!_settings.ShowOutline)),
                 new PaletteItem("Toggle Word Wrap", string.Empty, () => SetWordWrap(!_settings.WordWrap)),
                 new PaletteItem("Show Editor Only", string.Empty, () => SetViewMode("editor")),
                 new PaletteItem("Show Preview Only", string.Empty, () => SetViewMode("preview")),
                 new PaletteItem("Show Editor and Preview", string.Empty, () => SetViewMode("split")),
+                new PaletteItem("Rotate Editor / Preview Split", string.Empty, () => SetSplitOrientation(!_layout.EditorPreviewSideBySide)),
+                .. BuildLayoutPaletteItems(),
                 new PaletteItem("Switch to Dark Theme", string.Empty, () => SetTheme("dark")),
                 new PaletteItem("Switch to Light Theme", string.Empty, () => SetTheme("light")),
                 new PaletteItem("Help: User Guide", "F1", () => ShowHelp("Getting started")),
                 new PaletteItem("Help: Keyboard Shortcuts", string.Empty, () => ShowHelp("Keyboard shortcuts")),
                 new PaletteItem("Help: About MyMDEditor", string.Empty, () => ShowHelp("About")),
-            };
+            ];
 
             using var dialog = new QuickJumpDialog(_palette, Headings, Commands, GoToLine, commandMode);
             dialog.Width = Math.Min(640, Width - 80);
@@ -1537,6 +1441,7 @@ namespace MyMDEditor
                 _preview.Dispose();
                 _ribbon.Dispose();
                 _tabStrip.Dispose();
+                _layoutHost.Dispose();
                 foreach (var doc in _documents)
                 {
                     doc.Dispose();

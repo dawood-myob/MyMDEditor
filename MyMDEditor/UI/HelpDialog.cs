@@ -208,10 +208,17 @@ namespace MyMDEditor.UI
                     Bullet("Outline \u2013 the heading tree on the left.");
                     Bullet("Editor \u2013 the Markdown source.");
                     Bullet("Preview \u2013 the live rendered view.");
-                    Para("At least one of Editor or Preview always stays on, so the button for the last visible one is dimmed.");
+                    Para("At least one pane always stays visible, so the button for the last visible one is dimmed.");
+                    Sub("Panel title bars");
+                    Para("Every pane has a slim title bar with small buttons:");
+                    Bullet("Dock menu \u2013 dock the pane to the left, right, top or bottom, or swap it with its neighbour. Right-click the title bar for the same menu.");
+                    Bullet("Minimise \u2013 collapses the pane to a slim rail showing its icon and name. Click the rail to restore it.");
+                    Bullet("Maximise / Restore \u2013 the pane fills the whole area while the others are remembered. Double-click the title bar does the same.");
+                    Bullet("Close \u2013 hides the pane. Use the switch buttons or Ctrl+Alt+1 / 2 / 3 to bring it back.");
                     Sub("More layout options (View page)");
+                    Bullet("The Panes group has Dock, Minimise, Maximise, Swap (editor and preview) and Reset Layout.");
                     Bullet("Rotate switches between side-by-side and stacked editor and preview.");
-                    Bullet("Drag the dividers to resize panes.");
+                    Bullet("Drag the dividers to resize panes; the layout is remembered between sessions.");
                     Bullet("Zoom in or out with Ctrl and + / -, and reset with Ctrl+0.");
                     Bullet("Word Wrap, and Dark, Light or System themes.");
                     break;
@@ -261,6 +268,11 @@ namespace MyMDEditor.UI
                     Shortcut("Ctrl and + / -", "Zoom in / out");
                     Shortcut("Ctrl+0", "Reset zoom");
                     Shortcut("F1", "Open this help");
+                    Sub("Panes");
+                    Shortcut("Ctrl+Alt+1 / 2 / 3", "Show or hide Outline / Editor / Preview");
+                    Shortcut("Ctrl+Shift+M", "Minimise or restore the active pane");
+                    Shortcut("Ctrl+Shift+Enter", "Maximise or restore the active pane");
+                    Shortcut("Ctrl+Alt+0", "Reset the pane layout");
                     break;
                 default:
                     Title("About MyMDEditor");

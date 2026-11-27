@@ -1,4 +1,5 @@
 using MyMDEditor.Infrastructure;
+using MyMDEditor.Services;
 using MyMDEditor.Services.Editing;
 using MyMDEditor.UI;
 
@@ -17,9 +18,6 @@ namespace MyMDEditor
         private RibbonButton? _themeLightButton;
         private RibbonButton? _themeSystemButton;
         private readonly PaneSwitcher _paneSwitcher = new();
-        private const int OutlineSegment = 0;
-        private const int EditorSegment = 1;
-        private const int PreviewSegment = 2;
 
         // ---------------------------------------------------------------- Ribbon
 
@@ -89,10 +87,18 @@ namespace MyMDEditor
             _viewEditorButton = AddCommand(layout, "Editor", "\uE70F", true, () => SetViewMode("editor"), "Editor only", refocusEditor: false);
             _viewSplitButton = AddCommand(layout, "Split", "\u25E7", true, () => SetViewMode("split"), "Editor and preview", GlyphKind.Text, refocusEditor: false);
             _viewPreviewButton = AddCommand(layout, "Preview", "\uE7B3", true, () => SetViewMode("preview"), "Preview only", refocusEditor: false);
-            AddCommand(layout, "Rotate", "\uE8AB", true, () => SetSplitOrientation(!_settings.VerticalSplit), "Switch between side-by-side and stacked", refocusEditor: false);
+            AddCommand(layout, "Rotate", "\uE8AB", true, () => SetSplitOrientation(!_layout.EditorPreviewSideBySide), "Switch between side-by-side and stacked", refocusEditor: false);
+
+            BuildRibbonPaneMenus();
+            var panes = view.AddGroup("Panes");
+            _ribbon.AddButton(panes, new RibbonButton("Dock", "\uE70D", true) { DropDown = _ribbonDockMenu }, "Dock a pane to the left, right, top or bottom");
+            _ribbon.AddButton(panes, new RibbonButton("Minimise", "\uE921", false) { DropDown = _minimiseMenu }, "Minimise a pane to a rail (Ctrl+Shift+M)");
+            _ribbon.AddButton(panes, new RibbonButton("Maximise", "\uE922", false) { DropDown = _maximiseMenu }, "Maximise or restore a pane (Ctrl+Shift+Enter)");
+            AddCommand(panes, "Swap", "\uE8AB", false, () => ExecuteLayout(l => l.Swap(PaneId.Editor, PaneId.Preview)), "Swap the Editor and Preview panes", refocusEditor: false);
+            AddCommand(panes, "Reset Layout", "\uE777", false, ResetLayout, "Restore the default pane layout (Ctrl+Alt+0)", refocusEditor: false);
 
             var show = view.AddGroup("Show");
-            _outlineButton = AddCommand(show, "Outline", "\uE700", true, () => SetOutlineVisible(!_settings.ShowOutline), "Toggle document outline", refocusEditor: false);
+            _outlineButton = AddCommand(show, "Outline", "\uE700", true, () => TogglePane(PaneId.Outline), "Toggle document outline (Ctrl+Alt+1)", refocusEditor: false);
             _wrapButton = AddCommand(show, "Word Wrap", "\u21B5", true, () => SetWordWrap(!_settings.WordWrap), "Toggle word wrap", GlyphKind.Text);
 
             var zoom = view.AddGroup("Zoom");
@@ -124,26 +130,16 @@ namespace MyMDEditor
             AddCommand(about, "About", "\uE946", true, () => ShowHelp("About"), "About MyMDEditor and its developer", refocusEditor: false);
             AddCommand(about, "Developer", "\uE774", true, OpenDeveloperWebsite, $"{HelpDialog.DeveloperName} \u2013 {HelpDialog.DeveloperSite}", refocusEditor: false);
 
-            const string lastPane = "Keep at least one of Editor or Preview visible";
-            _paneSwitcher.Add("\uE700", "Outline", "Show or hide the document outline", string.Empty);
-            _paneSwitcher.Add("\uE70F", "Editor", "Show or hide the Markdown editor", lastPane);
-            _paneSwitcher.Add("\uE7B3", "Preview", "Show or hide the live preview", lastPane);
+            const string lastPane = "Keep at least one pane visible";
+            _paneSwitcher.Add("\uE700", "Outline", "Show or hide the document outline (Ctrl+Alt+1)", lastPane);
+            _paneSwitcher.Add("\uE70F", "Editor", "Show or hide the Markdown editor (Ctrl+Alt+2)", lastPane);
+            _paneSwitcher.Add("\uE7B3", "Preview", "Show or hide the live preview (Ctrl+Alt+3)", lastPane);
             _paneSwitcher.SegmentClicked += index =>
             {
-                switch (index)
+                if (Enum.IsDefined(typeof(PaneId), index))
                 {
-                    case OutlineSegment:
-                        SetOutlineVisible(!_settings.ShowOutline);
-                        break;
-                    case EditorSegment:
-                        SetPaneVisible(editor: _settings.ViewMode == "preview", preview: _settings.ViewMode != "editor");
-                        break;
-                    case PreviewSegment:
-                        SetPaneVisible(editor: _settings.ViewMode != "preview", preview: _settings.ViewMode == "editor");
-                        break;
+                    TogglePane((PaneId)index);
                 }
-
-                _active?.Editor.Focus();
             };
             _ribbon.SetHeaderSwitcher(_paneSwitcher);
 
@@ -169,17 +165,6 @@ namespace MyMDEditor
             }
         }
 
-        /// <summary>Applies independent editor/preview visibility; at least one of the two always stays visible.</summary>
-        private void SetPaneVisible(bool editor, bool preview)
-        {
-            if (!editor && !preview)
-            {
-                return;
-            }
-
-            SetViewMode(editor && preview ? "split" : editor ? "editor" : "preview");
-        }
-
         private void UpdateRibbonState()
         {
             if (_viewEditorButton is null)
@@ -187,16 +172,17 @@ namespace MyMDEditor
                 return;
             }
 
-            var editorVisible = _settings.ViewMode != "preview";
-            var previewVisible = _settings.ViewMode != "editor";
-            _paneSwitcher.SetState(OutlineSegment, _settings.ShowOutline, enabled: true);
-            _paneSwitcher.SetState(EditorSegment, editorVisible, enabled: !editorVisible || previewVisible);
-            _paneSwitcher.SetState(PreviewSegment, previewVisible, enabled: !previewVisible || editorVisible);
+            foreach (var pane in PaneLayoutState.AllPanes)
+            {
+                var shown = _layout.IsShown(pane);
+                _paneSwitcher.SetState((int)pane, shown, enabled: !shown || _layout.CanHide(pane));
+            }
 
-            _viewEditorButton.Checked = _settings.ViewMode == "editor";
-            _viewSplitButton!.Checked = _settings.ViewMode == "split";
-            _viewPreviewButton!.Checked = _settings.ViewMode == "preview";
-            _outlineButton!.Checked = _settings.ShowOutline;
+            var viewMode = _layout.LegacyViewMode;
+            _viewEditorButton.Checked = viewMode == "editor";
+            _viewSplitButton!.Checked = viewMode == "split";
+            _viewPreviewButton!.Checked = viewMode == "preview";
+            _outlineButton!.Checked = _layout.IsShown(PaneId.Outline);
             _wrapButton!.Checked = _settings.WordWrap;
             _themeDarkButton!.Checked = _settings.Theme == "dark";
             _themeLightButton!.Checked = _settings.Theme == "light";

@@ -21,12 +21,20 @@ namespace MyMDEditor.Services
         /// <summary>"dark", "light" or "system".</summary>
         public string Theme { get; set; } = "dark";
         public bool WordWrap { get; set; } = true;
+
+        /// <summary>Legacy flag kept in step with <see cref="Layout"/> so older versions can still read the file.</summary>
         public bool ShowOutline { get; set; } = true;
         public int OutlineWidth { get; set; } = 220;
 
-        /// <summary>"split", "editor" or "preview".</summary>
+        /// <summary>"split", "editor" or "preview". Legacy value kept in step with <see cref="Layout"/>.</summary>
         public string ViewMode { get; set; } = "split";
+
+        /// <summary>Legacy flag (editor and preview side by side) kept in step with <see cref="Layout"/>.</summary>
         public bool VerticalSplit { get; set; } = true;
+
+        /// <summary>Pane arrangement. Absent in files from older versions, where it is derived from the legacy fields.</summary>
+        [JsonConverter(typeof(TolerantJsonConverter<PaneLayoutSnapshot>))]
+        public PaneLayoutSnapshot? Layout { get; set; }
         public bool SyncEnabled { get; set; } = true;
         public int ZoomPercent { get; set; } = 100;
 
@@ -61,6 +69,21 @@ namespace MyMDEditor.Services
         public void RemoveRecent(string path) =>
             RecentFiles.RemoveAll(p => string.Equals(p, path, StringComparison.OrdinalIgnoreCase));
 
+        /// <summary>The pane layout, falling back to the legacy outline/view-mode/orientation fields when none was saved.</summary>
+        public PaneLayoutState GetPaneLayout() =>
+            Layout is null
+                ? PaneLayoutState.FromLegacy(ShowOutline, ViewMode, VerticalSplit)
+                : PaneLayoutState.FromSnapshot(Layout);
+
+        /// <summary>Stores the layout and mirrors it into the legacy fields.</summary>
+        public void SetPaneLayout(PaneLayoutState state)
+        {
+            Layout = state.ToSnapshot();
+            ShowOutline = state[PaneId.Outline].Visible;
+            ViewMode = state.LegacyViewMode;
+            VerticalSplit = state.EditorPreviewSideBySide;
+        }
+
         /// <summary>Clamps values loaded from a hand-edited or older settings file into safe ranges.</summary>
         public void Sanitise()
         {
@@ -69,11 +92,34 @@ namespace MyMDEditor.Services
             ZoomPercent = Math.Clamp(ZoomPercent, 50, 300);
             AutoSaveSeconds = Math.Clamp(AutoSaveSeconds, 5, 3600);
             OutlineWidth = Math.Clamp(OutlineWidth, 120, 600);
+            SetPaneLayout(GetPaneLayout());
             RecentFiles ??= new List<string>();
             RecentFiles = RecentFiles.Where(p => !string.IsNullOrWhiteSpace(p)).Take(MaxRecentFiles).ToList();
             LastCaret = Math.Max(0, LastCaret);
             OpenFiles = (OpenFiles ?? new List<string>()).Where(p => !string.IsNullOrWhiteSpace(p)).Distinct(StringComparer.OrdinalIgnoreCase).Take(50).ToList();
         }
+    }
+
+    /// <summary>Reads a value that fails to deserialise as null instead of failing the whole settings file.</summary>
+    internal sealed class TolerantJsonConverter<T> : JsonConverter<T> where T : class
+    {
+        public override T? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            using var document = JsonDocument.ParseValue(ref reader);
+            try
+            {
+                return document.RootElement.ValueKind == JsonValueKind.Object
+                    ? document.RootElement.Deserialize<T>(options)
+                    : null;
+            }
+            catch (JsonException)
+            {
+                return null;
+            }
+        }
+
+        public override void Write(Utf8JsonWriter writer, T value, JsonSerializerOptions options) =>
+            JsonSerializer.Serialize(writer, value, options);
     }
 
     public interface ISettingsService
